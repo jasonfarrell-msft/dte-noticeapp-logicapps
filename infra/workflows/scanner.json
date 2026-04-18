@@ -1,0 +1,370 @@
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "storageAccountName": {
+      "type": "String"
+    },
+    "downloaderCallbackUrl": {
+      "type": "String"
+    },
+    "backfillDays": {
+      "type": "Int",
+      "defaultValue": 10
+    },
+    "enableBackfill": {
+      "type": "Bool",
+      "defaultValue": true
+    }
+  },
+  "triggers": {
+    "Recurrence_15_Minutes": {
+      "type": "Recurrence",
+      "recurrence": {
+        "frequency": "Minute",
+        "interval": 15
+      }
+    }
+  },
+  "actions": {
+    "Initialize_BusinessUnits": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "businessUnits",
+            "type": "array",
+            "value": [
+              "AG", "BGS", "BIG", "BSP", "EG", "ET", "GB", "GPL", "MCGP", "MB",
+              "MNCA", "MNUS", "MR", "NPC", "NXCA", "NXUS", "SESH", "SG", "SR",
+              "STT", "TE", "TPGS", "VCP", "WE", "WRGS"
+            ]
+          }
+        ]
+      },
+      "runAfter": {}
+    },
+    "Initialize_BackfillCutoffDate": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "backfillCutoffDate",
+            "type": "string",
+            "value": "@{formatDateTime(addDays(utcNow(), -10), 'MM/dd/yyyy')}"
+          }
+        ]
+      },
+      "runAfter": {
+        "Initialize_BusinessUnits": ["Succeeded"]
+      }
+    },
+    "Initialize_ProcessedNotices": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "processedNotices",
+            "type": "array",
+            "value": []
+          }
+        ]
+      },
+      "runAfter": {
+        "Initialize_BackfillCutoffDate": ["Succeeded"]
+      }
+    },
+    "For_Each_BusinessUnit": {
+      "type": "Foreach",
+      "foreach": "@variables('businessUnits')",
+      "actions": {
+        "HTTP_Get_NoticesList": {
+          "type": "Http",
+          "inputs": {
+            "method": "GET",
+            "uri": "https://infopost.enbridge.com/infopost/noticesList.asp?pipe=@{items('For_Each_BusinessUnit')}&type=CRI",
+            "headers": {
+              "User-Agent": "CriticalNotice-Scanner/1.0"
+            }
+          },
+          "runAfter": {}
+        },
+        "Get_LastSeenKeys_Blob": {
+          "type": "Http",
+          "inputs": {
+            "method": "GET",
+            "uri": "https://@{parameters('storageAccountName')}.blob.core.windows.net/critical-notices/metadata/last-seen-keys/@{items('For_Each_BusinessUnit')}.json",
+            "authentication": {
+              "type": "ManagedServiceIdentity",
+              "audience": "https://storage.azure.com/"
+            },
+            "headers": {
+              "x-ms-version": "2020-10-02"
+            }
+          },
+          "runAfter": {
+            "HTTP_Get_NoticesList": ["Succeeded"]
+          },
+          "runtimeConfiguration": {
+            "staticResult": {
+              "name": "HTTP0",
+              "staticResultOptions": "Disabled"
+            }
+          }
+        },
+        "Check_Backfill_Mode": {
+          "type": "If",
+          "expression": {
+            "and": [
+              {
+                "equals": ["@parameters('enableBackfill')", true]
+              }
+            ]
+          },
+          "actions": {
+            "Extract_All_Table_Rows": {
+              "type": "Compose",
+              "inputs": "@split(body('HTTP_Get_NoticesList'), '<tr')",
+              "runAfter": {}
+            },
+            "Filter_Notice_Rows": {
+              "type": "Select",
+              "inputs": {
+                "from": "@outputs('Extract_All_Table_Rows')",
+                "select": {
+                  "rowContent": "@item()",
+                  "hasNotice": "@contains(item(), 'strKey1=')",
+                  "strKey1": "@if(contains(item(), 'strKey1='), split(split(item(), 'strKey1=')[1], '&')[0], '')",
+                  "postedDateRaw": "@if(and(contains(item(), '</td><td>'), contains(item(), '/')), split(split(item(), '</td><td>')[1], '</td>')[0], '')"
+                }
+              },
+              "runAfter": {
+                "Extract_All_Table_Rows": ["Succeeded"]
+              }
+            },
+            "Filter_Valid_Notices": {
+              "type": "Query",
+              "inputs": {
+                "from": "@body('Filter_Notice_Rows')",
+                "where": "@and(not(equals(item()?['strKey1'], '')), item()?['hasNotice'])"
+              },
+              "runAfter": {
+                "Filter_Notice_Rows": ["Succeeded"]
+              }
+            },
+            "For_Each_Notice": {
+              "type": "Foreach",
+              "foreach": "@body('Filter_Valid_Notices')",
+              "actions": {
+                "Parse_Posted_Date": {
+                  "type": "Compose",
+                  "inputs": {
+                    "strKey1": "@{items('For_Each_Notice')?['strKey1']}",
+                    "postedDateRaw": "@{items('For_Each_Notice')?['postedDateRaw']}",
+                    "postedDatePart": "@{if(contains(items('For_Each_Notice')?['postedDateRaw'], ' '), split(items('For_Each_Notice')?['postedDateRaw'], ' ')[0], items('For_Each_Notice')?['postedDateRaw'])}"
+                  },
+                  "runAfter": {}
+                },
+                "Check_Date_Within_Backfill_Window": {
+                  "type": "If",
+                  "expression": {
+                    "and": [
+                      {
+                        "not": {
+                          "equals": ["@outputs('Parse_Posted_Date')?['postedDatePart']", ""]
+                        }
+                      },
+                      {
+                        "greaterOrEquals": [
+                          "@outputs('Parse_Posted_Date')?['postedDatePart']",
+                          "@variables('backfillCutoffDate')"
+                        ]
+                      }
+                    ]
+                  },
+                  "actions": {
+                    "Call_Downloader_For_Backfill": {
+                      "type": "Http",
+                      "inputs": {
+                        "method": "POST",
+                        "uri": "@{parameters('downloaderCallbackUrl')}",
+                        "headers": {
+                          "Content-Type": "application/json"
+                        },
+                        "body": {
+                          "businessUnit": "@{items('For_Each_BusinessUnit')}",
+                          "noticeId": "@{outputs('Parse_Posted_Date')?['strKey1']}",
+                          "url": "https://infopost.enbridge.com/infopost/NoticeListDetail.asp?strKey1=@{outputs('Parse_Posted_Date')?['strKey1']}&type=CRI&Embed=2&pipe=@{items('For_Each_BusinessUnit')}",
+                          "postedDate": "@{outputs('Parse_Posted_Date')?['postedDatePart']}",
+                          "backfillMode": true
+                        }
+                      },
+                      "runAfter": {}
+                    },
+                    "Append_To_Processed": {
+                      "type": "AppendToArrayVariable",
+                      "inputs": {
+                        "name": "processedNotices",
+                        "value": {
+                          "businessUnit": "@{items('For_Each_BusinessUnit')}",
+                          "noticeId": "@{outputs('Parse_Posted_Date')?['strKey1']}",
+                          "postedDate": "@{outputs('Parse_Posted_Date')?['postedDatePart']}"
+                        }
+                      },
+                      "runAfter": {
+                        "Call_Downloader_For_Backfill": ["Succeeded"]
+                      }
+                    }
+                  },
+                  "else": {
+                    "actions": {}
+                  },
+                  "runAfter": {
+                    "Parse_Posted_Date": ["Succeeded"]
+                  }
+                }
+              },
+              "runAfter": {
+                "Filter_Valid_Notices": ["Succeeded"]
+              },
+              "runtimeConfiguration": {
+                "concurrency": {
+                  "repetitions": 3
+                }
+              }
+            },
+            "Update_LastSeenKeys_After_Backfill": {
+              "type": "Http",
+              "inputs": {
+                "method": "PUT",
+                "uri": "https://@{parameters('storageAccountName')}.blob.core.windows.net/critical-notices/metadata/last-seen-keys/@{items('For_Each_BusinessUnit')}.json",
+                "authentication": {
+                  "type": "ManagedServiceIdentity",
+                  "audience": "https://storage.azure.com/"
+                },
+                "headers": {
+                  "x-ms-version": "2020-10-02",
+                  "x-ms-blob-type": "BlockBlob",
+                  "Content-Type": "application/json"
+                },
+                "body": {
+                  "businessUnit": "@{items('For_Each_BusinessUnit')}",
+                  "lastSeenKey": "@{if(greater(length(body('Filter_Valid_Notices')), 0), first(body('Filter_Valid_Notices'))?['strKey1'], '')}",
+                  "lastChecked": "@{utcNow()}",
+                  "backfillCompleted": true,
+                  "noticesProcessed": "@{length(body('Filter_Valid_Notices'))}"
+                }
+              },
+              "runAfter": {
+                "For_Each_Notice": ["Succeeded"]
+              }
+            }
+          },
+          "else": {
+            "actions": {
+              "Parse_NoticesList_Response": {
+                "type": "Compose",
+                "inputs": {
+                  "rawHtml": "@{body('HTTP_Get_NoticesList')}",
+                  "businessUnit": "@{items('For_Each_BusinessUnit')}"
+                },
+                "runAfter": {}
+              },
+              "Extract_First_strKey1": {
+                "type": "Compose",
+                "inputs": "@if(contains(body('HTTP_Get_NoticesList'), 'strKey1='), split(split(body('HTTP_Get_NoticesList'), 'strKey1=')[1], '&')[0], '')",
+                "runAfter": {
+                  "Parse_NoticesList_Response": ["Succeeded"]
+                }
+              },
+              "Condition_Check_New_Notice": {
+                "type": "If",
+                "expression": {
+                  "and": [
+                    {
+                      "not": {
+                        "equals": ["@outputs('Extract_First_strKey1')", ""]
+                      }
+                    },
+                    {
+                      "or": [
+                        {
+                          "equals": ["@outputs('Get_LastSeenKeys_Blob')?['statusCode']", 404]
+                        },
+                        {
+                          "not": {
+                            "contains": ["@string(body('Get_LastSeenKeys_Blob'))", "@outputs('Extract_First_strKey1')"]
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "actions": {
+                  "Call_Downloader_Workflow": {
+                    "type": "Http",
+                    "inputs": {
+                      "method": "POST",
+                      "uri": "@{parameters('downloaderCallbackUrl')}",
+                      "headers": {
+                        "Content-Type": "application/json"
+                      },
+                      "body": {
+                        "businessUnit": "@{items('For_Each_BusinessUnit')}",
+                        "noticeId": "@{outputs('Extract_First_strKey1')}",
+                        "url": "https://infopost.enbridge.com/infopost/NoticeListDetail.asp?strKey1=@{outputs('Extract_First_strKey1')}&type=CRI&Embed=2&pipe=@{items('For_Each_BusinessUnit')}"
+                      }
+                    },
+                    "runAfter": {}
+                  },
+                  "Update_LastSeenKeys_Blob": {
+                    "type": "Http",
+                    "inputs": {
+                      "method": "PUT",
+                      "uri": "https://@{parameters('storageAccountName')}.blob.core.windows.net/critical-notices/metadata/last-seen-keys/@{items('For_Each_BusinessUnit')}.json",
+                      "authentication": {
+                        "type": "ManagedServiceIdentity",
+                        "audience": "https://storage.azure.com/"
+                      },
+                      "headers": {
+                        "x-ms-version": "2020-10-02",
+                        "x-ms-blob-type": "BlockBlob",
+                        "Content-Type": "application/json"
+                      },
+                      "body": {
+                        "businessUnit": "@{items('For_Each_BusinessUnit')}",
+                        "lastSeenKey": "@{outputs('Extract_First_strKey1')}",
+                        "lastChecked": "@{utcNow()}"
+                      }
+                    },
+                    "runAfter": {
+                      "Call_Downloader_Workflow": ["Succeeded"]
+                    }
+                  }
+                },
+                "else": {
+                  "actions": {}
+                },
+                "runAfter": {
+                  "Extract_First_strKey1": ["Succeeded"]
+                }
+              }
+            }
+          },
+          "runAfter": {
+            "Get_LastSeenKeys_Blob": ["Succeeded", "Failed"]
+          }
+        }
+      },
+      "runAfter": {
+        "Initialize_ProcessedNotices": ["Succeeded"]
+      },
+      "runtimeConfiguration": {
+        "concurrency": {
+          "repetitions": 5
+        }
+      }
+    }
+  },
+  "outputs": {}
+}

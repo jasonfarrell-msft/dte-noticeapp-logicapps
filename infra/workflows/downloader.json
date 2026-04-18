@@ -1,0 +1,147 @@
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "storageAccountName": {
+      "type": "String"
+    }
+  },
+  "triggers": {
+    "HTTP_Request": {
+      "type": "Request",
+      "kind": "Http",
+      "inputs": {
+        "schema": {
+          "type": "object",
+          "properties": {
+            "businessUnit": {
+              "type": "string"
+            },
+            "noticeId": {
+              "type": "string"
+            },
+            "url": {
+              "type": "string"
+            }
+          },
+          "required": ["businessUnit", "noticeId", "url"]
+        }
+      }
+    }
+  },
+  "actions": {
+    "Initialize_DateFolder": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "dateFolder",
+            "type": "string",
+            "value": "@{formatDateTime(utcNow(), 'yyyy-MM-dd')}"
+          }
+        ]
+      },
+      "runAfter": {}
+    },
+    "HTTP_Get_NoticeDetail": {
+      "type": "Http",
+      "inputs": {
+        "method": "GET",
+        "uri": "@{triggerBody()?['url']}",
+        "headers": {
+          "User-Agent": "CriticalNotice-Downloader/1.0"
+        }
+      },
+      "runAfter": {
+        "Initialize_DateFolder": ["Succeeded"]
+      }
+    },
+    "Create_Blob_RawHtml": {
+      "type": "Http",
+      "inputs": {
+        "method": "PUT",
+        "uri": "https://@{parameters('storageAccountName')}.blob.core.windows.net/critical-notices/raw-html/@{variables('dateFolder')}/@{triggerBody()?['businessUnit']}/@{triggerBody()?['noticeId']}.html",
+        "authentication": {
+          "type": "ManagedServiceIdentity",
+          "audience": "https://storage.azure.com/"
+        },
+        "headers": {
+          "x-ms-version": "2020-10-02",
+          "x-ms-blob-type": "BlockBlob",
+          "Content-Type": "text/html"
+        },
+        "body": "@{body('HTTP_Get_NoticeDetail')}"
+      },
+      "runAfter": {
+        "HTTP_Get_NoticeDetail": ["Succeeded"]
+      }
+    },
+    "Create_Metadata_Entry": {
+      "type": "Http",
+      "inputs": {
+        "method": "PUT",
+        "uri": "https://@{parameters('storageAccountName')}.blob.core.windows.net/critical-notices/metadata/downloads/@{variables('dateFolder')}/@{triggerBody()?['businessUnit']}/@{triggerBody()?['noticeId']}.json",
+        "authentication": {
+          "type": "ManagedServiceIdentity",
+          "audience": "https://storage.azure.com/"
+        },
+        "headers": {
+          "x-ms-version": "2020-10-02",
+          "x-ms-blob-type": "BlockBlob",
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "businessUnit": "@{triggerBody()?['businessUnit']}",
+          "noticeId": "@{triggerBody()?['noticeId']}",
+          "sourceUrl": "@{triggerBody()?['url']}",
+          "blobPath": "raw-html/@{variables('dateFolder')}/@{triggerBody()?['businessUnit']}/@{triggerBody()?['noticeId']}.html",
+          "downloadedAt": "@{utcNow()}"
+        }
+      },
+      "runAfter": {
+        "Create_Blob_RawHtml": ["Succeeded"]
+      }
+    },
+    "Response_Success": {
+      "type": "Response",
+      "inputs": {
+        "statusCode": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "status": "success",
+          "businessUnit": "@{triggerBody()?['businessUnit']}",
+          "noticeId": "@{triggerBody()?['noticeId']}",
+          "blobPath": "raw-html/@{variables('dateFolder')}/@{triggerBody()?['businessUnit']}/@{triggerBody()?['noticeId']}.html",
+          "downloadedAt": "@{utcNow()}"
+        }
+      },
+      "runAfter": {
+        "Create_Metadata_Entry": ["Succeeded"]
+      },
+      "kind": "Http"
+    },
+    "Response_Failure": {
+      "type": "Response",
+      "inputs": {
+        "statusCode": 500,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "status": "failed",
+          "businessUnit": "@{triggerBody()?['businessUnit']}",
+          "noticeId": "@{triggerBody()?['noticeId']}",
+          "error": "Failed to download or store notice"
+        }
+      },
+      "runAfter": {
+        "HTTP_Get_NoticeDetail": ["Failed"],
+        "Create_Blob_RawHtml": ["Failed"]
+      },
+      "kind": "Http"
+    }
+  },
+  "outputs": {}
+}
