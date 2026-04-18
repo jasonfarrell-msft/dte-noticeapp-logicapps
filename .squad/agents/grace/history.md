@@ -36,3 +36,9 @@ User: Jason Farrell
     - Low temperature (0.1) for deterministic extraction
   - RBAC: Parser Logic App granted Storage Blob Data Contributor role
   - No API connections required — direct HTTP + managed identity for all storage operations
+
+- 2026-04-18: Deployed full infra (Foundry + Parser) to `rg-dte-noticeapp-eus2-mx01`:
+  - Foundry: `gpt-4o-mini` deployment was blocked by `ServiceModelDeprecated` in this subscription/region, so deployment was switched to `gpt-4.1-mini` (`2025-04-14`).
+  - Parser workflow updated to default to `gpt-4.1-mini`.
+  - Fixed redeploy collision: existing ADF `Key Vault Secrets User` role assignment had a non-standard GUID, so `infra/main.bicep` pins to the existing roleAssignment ID to avoid `RoleAssignmentExists` failures.
+  - Verified Foundry endpoint returns HTTP 200 for `chat/completions`; Parser Logic App is enabled and has successful runs.

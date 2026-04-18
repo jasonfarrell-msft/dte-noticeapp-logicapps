@@ -150,6 +150,54 @@ All Azure resources should have the tag `SecurityControl: Ignore`
 
 ---
 
+### 5. Production Deployment: Model Migration & RBAC Fixes
+
+**Author:** Grace (DevOps/Infrastructure)  
+**Date:** 2026-04-18  
+**Status:** DEPLOYED  
+**Impact:** Production parser service operability
+
+#### Context
+Deploying full parser infrastructure to `rg-dte-noticeapp-eus2-mx01` required runtime fixes before clean, re-deployable state achieved.
+
+#### Decision 1: Model Substitution (gpt-4o-mini → gpt-4.1-mini)
+- **Problem:** gpt-4o-mini (2024-07-18) deprecated since 2026-03-31; deployment failed with `ServiceModelDeprecated`
+- **Solution:** Deploy gpt-4.1-mini (2025-04-14) — GA, deployable, same Chat Completions + structured JSON output capability
+- **Changes:**
+  - `infra/modules/foundry.bicep` model/version/name updated
+  - `infra/workflows/parser-multisite.json` foundryDeploymentName updated
+- **Rationale:** Maintains architectural pattern; gpt-4.1-mini is economically and functionally equivalent; alleviates subscription/region constraint
+
+#### Decision 2: RBAC Role Assignment GUID Pinning
+- **Problem:** ADF Key Vault Secrets User role assignment failed with `RoleAssignmentExists` — existing assignment had different resource name/ID than ARM template's deterministic `guid(...)` calculation
+- **Solution:** Pin `adfKeyVaultRole.name` to existing GUID: `d01069f8-e69b-5b52-b262-7dc8ae066825`
+- **Changes:** `infra/main.bicep` role assignment resource name hardcoded
+- **Rationale:** ARM deployment idempotency requires role assignment resource names to be deterministic constants; mismatch prevents re-deploy safety even if assignment is semantically identical
+
+#### Verification
+- ✅ Foundry API responds (HTTP 200)
+- ✅ Logic App deployed, enabled, runs present
+
+#### Open Questions for Architecture Review
+- Acceptability of gpt-4.1-mini as permanent production model given gpt-4o-mini deprecation pattern
+- Whether ADF Key Vault role assignment should be re-baselined (delete/recreate) to return to deterministic naming, or accept pinned GUID as production reality
+
+---
+
+### 6. User Directive: Agent Model Preference
+
+**Author:** Jason Farrell (via Copilot)  
+**Date:** 2026-04-18  
+**Status:** DIRECTIVE  
+**Impact:** Agent spawning configuration
+
+#### Directive
+Use GPT-5 model for agent spawns.
+
+**Reason:** User request — captured for team memory.
+
+---
+
 ## Governance
 
 - All meaningful changes require team consensus
