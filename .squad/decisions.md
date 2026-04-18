@@ -198,6 +198,38 @@ Use GPT-5 model for agent spawns.
 
 ---
 
+### 7. Foundry v2 Migration: Cognitive Services AIServices + GPT-5.2
+
+**Author:** Grace (DevOps/Infrastructure)  
+**Date:** 2026-04-18  
+**Status:** APPROVED / DEPLOYED  
+**Impact:** Production Foundry deployment upgrade
+
+#### Context
+Previous deployments used deprecated `kind: OpenAI` Cognitive Services. Requirement to migrate to Cognitive Services v2 (AIServices) pattern and upgrade model from gpt-4.1-mini to gpt-5.2.
+
+#### Decision
+1. Use Cognitive Services account with `kind: AIServices` for Foundry v2
+2. Deploy model `gpt-5.2` version `2025-12-11`
+3. Use deployment SKU `DataZoneStandard` with capacity 1 (quota constraint — `GlobalStandard` exhausted in East US 2)
+4. Purge soft-deleted resource before redeployment to avoid ARM `restore: true` requirement
+
+#### Rationale
+- `AIServices` produces v2-style endpoint (*.cognitiveservices.azure.com)
+- GPT-5.2 available in East US 2 per az cognitiveservices model list
+- `DataZoneStandard` validated and deployable; quota workaround for current constraints
+
+#### Changes Made
+- `infra/modules/foundry.bicep`: Updated kind, model, version, SKU, capacity, apiVersion
+- `infra/workflows/parser-multisite.json`: Updated default deployment name reference
+- Operational: Deleted and purged old account before redeployment
+
+#### Follow-ups
+- Request quota increase for GPT-5.2 `GlobalStandard` if higher throughput needed
+- Endpoint and auth patterns remain same; workflows continue via `/openai/deployments/...`
+
+---
+
 ## Governance
 
 - All meaningful changes require team consensus

@@ -1,0 +1,144 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.41.2.15936",
+      "templateHash": "18310568277298712456"
+    }
+  },
+  "parameters": {
+    "location": {
+      "type": "string",
+      "metadata": {
+        "description": "Location for resources"
+      }
+    },
+    "foundryAccountName": {
+      "type": "string",
+      "defaultValue": "cog-dte-noticeapp-eus2-mx01",
+      "metadata": {
+        "description": "Name for the Cognitive Services account"
+      }
+    },
+    "tags": {
+      "type": "object",
+      "defaultValue": {},
+      "metadata": {
+        "description": "Tags to apply to resources"
+      }
+    },
+    "sku": {
+      "type": "string",
+      "defaultValue": "S0",
+      "allowedValues": [
+        "S0",
+        "S1"
+      ],
+      "metadata": {
+        "description": "SKU for Cognitive Services account"
+      }
+    },
+    "deploymentName": {
+      "type": "string",
+      "defaultValue": "gpt-5.2",
+      "metadata": {
+        "description": "GPT model deployment name"
+      }
+    },
+    "modelVersion": {
+      "type": "string",
+      "defaultValue": "2025-12-11",
+      "metadata": {
+        "description": "GPT model version"
+      }
+    },
+    "deploymentCapacity": {
+      "type": "int",
+      "defaultValue": 1,
+      "metadata": {
+        "description": "Deployment capacity (TPM in thousands)"
+      }
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.CognitiveServices/accounts",
+      "apiVersion": "2024-10-01",
+      "name": "[parameters('foundryAccountName')]",
+      "location": "[parameters('location')]",
+      "tags": "[union(parameters('tags'), createObject('Service', 'Foundry-AI-Extraction'))]",
+      "kind": "AIServices",
+      "sku": {
+        "name": "[parameters('sku')]"
+      },
+      "properties": {
+        "customSubDomainName": "[parameters('foundryAccountName')]",
+        "publicNetworkAccess": "Enabled",
+        "networkAcls": {
+          "defaultAction": "Allow"
+        },
+        "disableLocalAuth": false
+      }
+    },
+    {
+      "type": "Microsoft.CognitiveServices/accounts/deployments",
+      "apiVersion": "2024-10-01",
+      "name": "[format('{0}/{1}', parameters('foundryAccountName'), parameters('deploymentName'))]",
+      "sku": {
+        "name": "DataZoneStandard",
+        "capacity": "[parameters('deploymentCapacity')]"
+      },
+      "properties": {
+        "model": {
+          "format": "OpenAI",
+          "name": "gpt-5.2",
+          "version": "[parameters('modelVersion')]"
+        },
+        "versionUpgradeOption": "OnceNewDefaultVersionAvailable",
+        "raiPolicyName": "Microsoft.Default"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.CognitiveServices/accounts', parameters('foundryAccountName'))]"
+      ]
+    }
+  ],
+  "outputs": {
+    "foundryAccountName": {
+      "type": "string",
+      "metadata": {
+        "description": "Cognitive Services account name"
+      },
+      "value": "[parameters('foundryAccountName')]"
+    },
+    "foundryEndpoint": {
+      "type": "string",
+      "metadata": {
+        "description": "Foundry endpoint URL"
+      },
+      "value": "[reference(resourceId('Microsoft.CognitiveServices/accounts', parameters('foundryAccountName')), '2024-10-01').endpoint]"
+    },
+    "foundryResourceId": {
+      "type": "string",
+      "metadata": {
+        "description": "Foundry resource ID"
+      },
+      "value": "[resourceId('Microsoft.CognitiveServices/accounts', parameters('foundryAccountName'))]"
+    },
+    "deploymentName": {
+      "type": "string",
+      "metadata": {
+        "description": "GPT deployment name"
+      },
+      "value": "[parameters('deploymentName')]"
+    },
+    "foundryApiKey": {
+      "type": "string",
+      "metadata": {
+        "description": "Foundry API key (primary)"
+      },
+      "value": "[listKeys(resourceId('Microsoft.CognitiveServices/accounts', parameters('foundryAccountName')), '2024-10-01').key1]"
+    }
+  }
+}

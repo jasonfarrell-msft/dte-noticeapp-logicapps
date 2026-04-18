@@ -42,3 +42,10 @@ User: Jason Farrell
   - Parser workflow updated to default to `gpt-4.1-mini`.
   - Fixed redeploy collision: existing ADF `Key Vault Secrets User` role assignment had a non-standard GUID, so `infra/main.bicep` pins to the existing roleAssignment ID to avoid `RoleAssignmentExists` failures.
   - Verified Foundry endpoint returns HTTP 200 for `chat/completions`; Parser Logic App is enabled and has successful runs.
+
+- 2026-04-18: Migrated Foundry from deprecated `kind: OpenAI` to `kind: AIServices` (Cognitive Services v2):
+  - Account endpoint changed from `*.openai.azure.com` to `*.cognitiveservices.azure.com`.
+  - Deployed `gpt-5.2` (`2025-12-11`) successfully.
+  - `GlobalStandard` SKU was blocked by quota in East US 2; used `DataZoneStandard` with capacity 1 to fit available quota.
+  - Deleting the old account required a follow-up purge due to soft-delete before redeploy could succeed.
+  - Parser workflow default updated to `gpt-5.2` (deployment name remains parameterized).

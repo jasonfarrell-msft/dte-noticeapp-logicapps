@@ -1,0 +1,478 @@
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "contentVersion": "2.0.0",
+  "parameters": {
+    "storageAccountName": {
+      "type": "String"
+    },
+    "downloaderCallbackUrl": {
+      "type": "String"
+    },
+    "backfillDays": {
+      "type": "Int",
+      "defaultValue": 10
+    }
+  },
+  "triggers": {
+    "Recurrence_15_Minutes": {
+      "type": "Recurrence",
+      "recurrence": {
+        "frequency": "Minute",
+        "interval": 15
+      }
+    }
+  },
+  "actions": {
+    "Initialize_BackfillCutoffDate": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "backfillCutoffDate",
+            "type": "string",
+            "value": "@{formatDateTime(addDays(utcNow(), mul(-1, parameters('backfillDays'))), 'yyyy-MM-dd')}"
+          }
+        ]
+      },
+      "runAfter": {}
+    },
+    "Initialize_EnbridgeUnits": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "enbridgeUnits",
+            "type": "array",
+            "value": [
+              "AG", "BGS", "BIG", "BSP", "EG", "ET", "GB", "GPL", "MCGP", "MB",
+              "MNCA", "MNUS", "MR", "NPC", "NXCA", "NXUS", "SESH", "SG", "SR",
+              "STT", "TE", "TPGS", "VCP", "WE", "WRGS"
+            ]
+          }
+        ]
+      },
+      "runAfter": {
+        "Initialize_BackfillCutoffDate": ["Succeeded"]
+      }
+    },
+    "Initialize_TCeConnectsUnits": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "tceconnectsUnits",
+            "type": "array",
+            "value": [
+              {"code": "ANR", "assetId": "3005", "name": "ANR Pipeline Company"},
+              {"code": "TCO", "assetId": "51", "name": "Columbia Gas Transmission"},
+              {"code": "CGT", "assetId": "14", "name": "Columbia Gulf Transmission"},
+              {"code": "MPC", "assetId": "26", "name": "Midwestern Gas Transmission"},
+              {"code": "NBPL", "assetId": "3029", "name": "Northern Border Pipeline"}
+            ]
+          }
+        ]
+      },
+      "runAfter": {
+        "Initialize_EnbridgeUnits": ["Succeeded"]
+      }
+    },
+
+    "SCOPE_Enbridge_Scanner": {
+      "type": "Scope",
+      "actions": {
+        "For_Each_Enbridge_Unit": {
+          "type": "Foreach",
+          "foreach": "@variables('enbridgeUnits')",
+          "actions": {
+            "Enbridge_Get_NoticesList": {
+              "type": "Http",
+              "inputs": {
+                "method": "GET",
+                "uri": "https://infopost.enbridge.com/infopost/noticesList.asp?pipe=@{items('For_Each_Enbridge_Unit')}&type=CRI",
+                "headers": {
+                  "User-Agent": "CriticalNotice-Scanner/2.0"
+                }
+              },
+              "runAfter": {}
+            },
+            "Enbridge_Get_LastSeen": {
+              "type": "Http",
+              "inputs": {
+                "method": "GET",
+                "uri": "https://@{parameters('storageAccountName')}.blob.core.windows.net/critical-notices/tracking/enbridge/@{items('For_Each_Enbridge_Unit')}.json",
+                "authentication": {
+                  "type": "ManagedServiceIdentity",
+                  "audience": "https://storage.azure.com/"
+                },
+                "headers": {
+                  "x-ms-version": "2020-10-02"
+                }
+              },
+              "runAfter": {
+                "Enbridge_Get_NoticesList": ["Succeeded"]
+              },
+              "runtimeConfiguration": {
+                "staticResult": {
+                  "name": "HTTP0",
+                  "staticResultOptions": "Disabled"
+                }
+              }
+            },
+            "Enbridge_Parse_Notices": {
+              "type": "Compose",
+              "inputs": "@split(body('Enbridge_Get_NoticesList'), '<tr')",
+              "runAfter": {
+                "Enbridge_Get_LastSeen": ["Succeeded", "Failed"]
+              }
+            },
+            "Enbridge_Extract_Notice_Data": {
+              "type": "Select",
+              "inputs": {
+                "from": "@outputs('Enbridge_Parse_Notices')",
+                "select": {
+                  "hasNotice": "@contains(item(), 'strKey1=')",
+                  "noticeId": "@if(contains(item(), 'strKey1='), split(split(item(), 'strKey1=')[1], '&')[0], '')",
+                  "postedDateRaw": "@if(and(contains(item(), '</td><td>'), contains(item(), '/')), split(split(item(), '</td><td>')[1], '</td>')[0], '')"
+                }
+              },
+              "runAfter": {
+                "Enbridge_Parse_Notices": ["Succeeded"]
+              }
+            },
+            "Enbridge_Filter_Valid": {
+              "type": "Query",
+              "inputs": {
+                "from": "@body('Enbridge_Extract_Notice_Data')",
+                "where": "@and(not(equals(item()?['noticeId'], '')), item()?['hasNotice'])"
+              },
+              "runAfter": {
+                "Enbridge_Extract_Notice_Data": ["Succeeded"]
+              }
+            },
+            "Enbridge_Process_Each_Notice": {
+              "type": "Foreach",
+              "foreach": "@body('Enbridge_Filter_Valid')",
+              "actions": {
+                "Enbridge_Check_Within_Window": {
+                  "type": "If",
+                  "expression": {
+                    "and": [
+                      {
+                        "not": {
+                          "equals": ["@items('Enbridge_Process_Each_Notice')?['postedDateRaw']", ""]
+                        }
+                      }
+                    ]
+                  },
+                  "actions": {
+                    "Enbridge_Check_Already_Processed": {
+                      "type": "Http",
+                      "inputs": {
+                        "method": "HEAD",
+                        "uri": "https://@{parameters('storageAccountName')}.blob.core.windows.net/critical-notices/notices/enbridge/@{items('For_Each_Enbridge_Unit')}/@{items('Enbridge_Process_Each_Notice')?['noticeId']}.json",
+                        "authentication": {
+                          "type": "ManagedServiceIdentity",
+                          "audience": "https://storage.azure.com/"
+                        },
+                        "headers": {
+                          "x-ms-version": "2020-10-02"
+                        }
+                      },
+                      "runAfter": {},
+                      "runtimeConfiguration": {
+                        "staticResult": {
+                          "name": "HTTP_HEAD",
+                          "staticResultOptions": "Disabled"
+                        }
+                      }
+                    },
+                    "Enbridge_Download_If_New": {
+                      "type": "If",
+                      "expression": {
+                        "equals": ["@outputs('Enbridge_Check_Already_Processed')['statusCode']", 404]
+                      },
+                      "actions": {
+                        "Enbridge_Call_Downloader": {
+                          "type": "Http",
+                          "inputs": {
+                            "method": "POST",
+                            "uri": "@{parameters('downloaderCallbackUrl')}",
+                            "headers": {
+                              "Content-Type": "application/json"
+                            },
+                            "body": {
+                              "source": "enbridge",
+                              "pipeline": "@{items('For_Each_Enbridge_Unit')}",
+                              "noticeId": "@{items('Enbridge_Process_Each_Notice')?['noticeId']}",
+                              "url": "https://infopost.enbridge.com/infopost/NoticeListDetail.asp?strKey1=@{items('Enbridge_Process_Each_Notice')?['noticeId']}&type=CRI&Embed=2&pipe=@{items('For_Each_Enbridge_Unit')}",
+                              "postedDate": "@{items('Enbridge_Process_Each_Notice')?['postedDateRaw']}"
+                            }
+                          },
+                          "runAfter": {}
+                        }
+                      },
+                      "else": {
+                        "actions": {}
+                      },
+                      "runAfter": {
+                        "Enbridge_Check_Already_Processed": ["Succeeded", "Failed"]
+                      }
+                    }
+                  },
+                  "else": {
+                    "actions": {}
+                  },
+                  "runAfter": {}
+                }
+              },
+              "runAfter": {
+                "Enbridge_Filter_Valid": ["Succeeded"]
+              },
+              "runtimeConfiguration": {
+                "concurrency": {
+                  "repetitions": 3
+                }
+              }
+            },
+            "Enbridge_Update_Tracking": {
+              "type": "Http",
+              "inputs": {
+                "method": "PUT",
+                "uri": "https://@{parameters('storageAccountName')}.blob.core.windows.net/critical-notices/tracking/enbridge/@{items('For_Each_Enbridge_Unit')}.json",
+                "authentication": {
+                  "type": "ManagedServiceIdentity",
+                  "audience": "https://storage.azure.com/"
+                },
+                "headers": {
+                  "x-ms-version": "2020-10-02",
+                  "x-ms-blob-type": "BlockBlob",
+                  "Content-Type": "application/json"
+                },
+                "body": {
+                  "source": "enbridge",
+                  "pipeline": "@{items('For_Each_Enbridge_Unit')}",
+                  "lastChecked": "@{utcNow()}",
+                  "lastSeenNoticeId": "@{if(greater(length(body('Enbridge_Filter_Valid')), 0), first(body('Enbridge_Filter_Valid'))?['noticeId'], '')}",
+                  "noticesInWindow": "@{length(body('Enbridge_Filter_Valid'))}"
+                }
+              },
+              "runAfter": {
+                "Enbridge_Process_Each_Notice": ["Succeeded"]
+              }
+            }
+          },
+          "runAfter": {},
+          "runtimeConfiguration": {
+            "concurrency": {
+              "repetitions": 5
+            }
+          }
+        }
+      },
+      "runAfter": {
+        "Initialize_TCeConnectsUnits": ["Succeeded"]
+      }
+    },
+
+    "SCOPE_TCeConnects_Scanner": {
+      "type": "Scope",
+      "actions": {
+        "For_Each_TCeConnects_Unit": {
+          "type": "Foreach",
+          "foreach": "@variables('tceconnectsUnits')",
+          "actions": {
+            "TCeConnects_Get_NoticesList_JSON": {
+              "type": "Http",
+              "inputs": {
+                "method": "GET",
+                "uri": "https://www.tceconnects.com/infopost/webmethods/SSRS_ListCriticalNotices.aspx?assetid=@{items('For_Each_TCeConnects_Unit')?['assetId']}&page=1&rows=100",
+                "headers": {
+                  "User-Agent": "CriticalNotice-Scanner/2.0",
+                  "Accept": "application/json"
+                }
+              },
+              "runAfter": {}
+            },
+            "TCeConnects_Parse_JSON": {
+              "type": "ParseJson",
+              "inputs": {
+                "content": "@body('TCeConnects_Get_NoticesList_JSON')",
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "total": {"type": "string"},
+                    "page": {"type": "string"},
+                    "records": {"type": "string"},
+                    "rows": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {"type": "string"},
+                          "cell": {
+                            "type": "array",
+                            "items": {"type": "string"}
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "runAfter": {
+                "TCeConnects_Get_NoticesList_JSON": ["Succeeded"]
+              }
+            },
+            "TCeConnects_Process_Each_Notice": {
+              "type": "Foreach",
+              "foreach": "@body('TCeConnects_Parse_JSON')?['rows']",
+              "actions": {
+                "TCeConnects_Extract_Notice_Fields": {
+                  "type": "Compose",
+                  "inputs": {
+                    "noticeId": "@{items('TCeConnects_Process_Each_Notice')?['cell'][0]}",
+                    "title": "@{items('TCeConnects_Process_Each_Notice')?['cell'][1]}",
+                    "postedDate": "@{items('TCeConnects_Process_Each_Notice')?['cell'][2]}"
+                  },
+                  "runAfter": {}
+                },
+                "TCeConnects_Check_Already_Processed": {
+                  "type": "Http",
+                  "inputs": {
+                    "method": "HEAD",
+                    "uri": "https://@{parameters('storageAccountName')}.blob.core.windows.net/critical-notices/notices/tceconnects/@{items('For_Each_TCeConnects_Unit')?['code']}/@{outputs('TCeConnects_Extract_Notice_Fields')?['noticeId']}.json",
+                    "authentication": {
+                      "type": "ManagedServiceIdentity",
+                      "audience": "https://storage.azure.com/"
+                    },
+                    "headers": {
+                      "x-ms-version": "2020-10-02"
+                    }
+                  },
+                  "runAfter": {
+                    "TCeConnects_Extract_Notice_Fields": ["Succeeded"]
+                  },
+                  "runtimeConfiguration": {
+                    "staticResult": {
+                      "name": "HTTP_HEAD",
+                      "staticResultOptions": "Disabled"
+                    }
+                  }
+                },
+                "TCeConnects_Download_If_New": {
+                  "type": "If",
+                  "expression": {
+                    "equals": ["@outputs('TCeConnects_Check_Already_Processed')['statusCode']", 404]
+                  },
+                  "actions": {
+                    "TCeConnects_Call_Downloader": {
+                      "type": "Http",
+                      "inputs": {
+                        "method": "POST",
+                        "uri": "@{parameters('downloaderCallbackUrl')}",
+                        "headers": {
+                          "Content-Type": "application/json"
+                        },
+                        "body": {
+                          "source": "tceconnects",
+                          "pipeline": "@{items('For_Each_TCeConnects_Unit')?['code']}",
+                          "pipelineName": "@{items('For_Each_TCeConnects_Unit')?['name']}",
+                          "assetId": "@{items('For_Each_TCeConnects_Unit')?['assetId']}",
+                          "noticeId": "@{outputs('TCeConnects_Extract_Notice_Fields')?['noticeId']}",
+                          "title": "@{outputs('TCeConnects_Extract_Notice_Fields')?['title']}",
+                          "url": "https://www.tceconnects.com/infopost/ReportViewer.aspx?%2fInfoPost%2fNoticesSubreport&pNoticeId=@{outputs('TCeConnects_Extract_Notice_Fields')?['noticeId']}&AssetNbr=@{items('For_Each_TCeConnects_Unit')?['assetId']}&rs:Format=HTML4.0",
+                          "postedDate": "@{outputs('TCeConnects_Extract_Notice_Fields')?['postedDate']}"
+                        }
+                      },
+                      "runAfter": {}
+                    }
+                  },
+                  "else": {
+                    "actions": {}
+                  },
+                  "runAfter": {
+                    "TCeConnects_Check_Already_Processed": ["Succeeded", "Failed"]
+                  }
+                }
+              },
+              "runAfter": {
+                "TCeConnects_Parse_JSON": ["Succeeded"]
+              },
+              "runtimeConfiguration": {
+                "concurrency": {
+                  "repetitions": 3
+                }
+              }
+            },
+            "TCeConnects_Update_Tracking": {
+              "type": "Http",
+              "inputs": {
+                "method": "PUT",
+                "uri": "https://@{parameters('storageAccountName')}.blob.core.windows.net/critical-notices/tracking/tceconnects/@{items('For_Each_TCeConnects_Unit')?['code']}.json",
+                "authentication": {
+                  "type": "ManagedServiceIdentity",
+                  "audience": "https://storage.azure.com/"
+                },
+                "headers": {
+                  "x-ms-version": "2020-10-02",
+                  "x-ms-blob-type": "BlockBlob",
+                  "Content-Type": "application/json"
+                },
+                "body": {
+                  "source": "tceconnects",
+                  "pipeline": "@{items('For_Each_TCeConnects_Unit')?['code']}",
+                  "pipelineName": "@{items('For_Each_TCeConnects_Unit')?['name']}",
+                  "assetId": "@{items('For_Each_TCeConnects_Unit')?['assetId']}",
+                  "lastChecked": "@{utcNow()}",
+                  "totalRecords": "@{body('TCeConnects_Parse_JSON')?['records']}"
+                }
+              },
+              "runAfter": {
+                "TCeConnects_Process_Each_Notice": ["Succeeded"]
+              }
+            }
+          },
+          "runAfter": {},
+          "runtimeConfiguration": {
+            "concurrency": {
+              "repetitions": 3
+            }
+          }
+        }
+      },
+      "runAfter": {
+        "Initialize_TCeConnectsUnits": ["Succeeded"]
+      }
+    },
+
+    "Update_Scan_Summary": {
+      "type": "Http",
+      "inputs": {
+        "method": "PUT",
+        "uri": "https://@{parameters('storageAccountName')}.blob.core.windows.net/critical-notices/tracking/scan-summary.json",
+        "authentication": {
+          "type": "ManagedServiceIdentity",
+          "audience": "https://storage.azure.com/"
+        },
+        "headers": {
+          "x-ms-version": "2020-10-02",
+          "x-ms-blob-type": "BlockBlob",
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "lastScanCompleted": "@{utcNow()}",
+          "backfillWindowDays": "@{parameters('backfillDays')}",
+          "backfillCutoffDate": "@{variables('backfillCutoffDate')}",
+          "sitesScanned": ["enbridge", "tceconnects"],
+          "enbridgeUnits": 25,
+          "tceconnectsUnits": 5
+        }
+      },
+      "runAfter": {
+        "SCOPE_Enbridge_Scanner": ["Succeeded"],
+        "SCOPE_TCeConnects_Scanner": ["Succeeded"]
+      }
+    }
+  },
+  "outputs": {}
+}

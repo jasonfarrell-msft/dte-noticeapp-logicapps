@@ -1,0 +1,78 @@
+{
+  "version": "1.0.0",
+  "description": "Multi-site configuration for critical notice ingestion",
+  "sites": {
+    "enbridge": {
+      "enabled": true,
+      "name": "Enbridge Infopost",
+      "type": "html-scraper",
+      "baseUrl": "https://infopost.enbridge.com/infopost",
+      "listUrlPattern": "{baseUrl}/noticesList.asp?pipe={unitCode}&type=CRI",
+      "detailUrlPattern": "{baseUrl}/NoticeListDetail.asp?strKey1={noticeId}&type=CRI&Embed=2&pipe={unitCode}",
+      "changeDetectionKey": "strKey1",
+      "businessUnits": [
+        {"code": "AG", "name": "Algonquin Gas Transmission, LLC"},
+        {"code": "BGS", "name": "Bobcat Gas Storage"},
+        {"code": "BIG", "name": "BIG Pipeline"},
+        {"code": "BSP", "name": "Big Sandy Pipeline"},
+        {"code": "EG", "name": "MHP Egan (EHP)"},
+        {"code": "ET", "name": "East Tennessee (ETNG)"},
+        {"code": "GB", "name": "Garden Banks"},
+        {"code": "GPL", "name": "Generation Pipeline"},
+        {"code": "MCGP", "name": "Mississippi Canyon"},
+        {"code": "MB", "name": "MHP Moss Bluff (MBHP)"},
+        {"code": "MNCA", "name": "Maritimes & Northeast Canada"},
+        {"code": "MNUS", "name": "Maritimes & Northeast U.S."},
+        {"code": "MR", "name": "Manta Ray Offshore Gathering Company"},
+        {"code": "NPC", "name": "Nautilus Pipeline Company"},
+        {"code": "NXCA", "name": "NEXUS ULC"},
+        {"code": "NXUS", "name": "NEXUS U.S."},
+        {"code": "SESH", "name": "Southeast Supply Header"},
+        {"code": "SG", "name": "Saltville (SGSC)"},
+        {"code": "SR", "name": "Steckman Ridge"},
+        {"code": "STT", "name": "Sabal Trail"},
+        {"code": "TE", "name": "Texas Eastern"},
+        {"code": "TPGS", "name": "Tres Palacios Gas Storage LLC"},
+        {"code": "VCP", "name": "Valley Crossing Pipeline"},
+        {"code": "WE", "name": "Westcoast Energy"},
+        {"code": "WRGS", "name": "Walker Ridge Gathering System"}
+      ]
+    },
+    "tceconnects": {
+      "enabled": true,
+      "name": "TC Energy Connects",
+      "type": "json-api",
+      "baseUrl": "https://www.tceconnects.com/infopost",
+      "listUrlPattern": "{baseUrl}/webmethods/SSRS_ListCriticalNotices.aspx?assetid={assetId}&page=1&rows=100",
+      "detailUrlPattern": "{baseUrl}/ReportViewer.aspx?%2fInfoPost%2fNoticesSubreport&pNoticeId={noticeId}&AssetNbr={assetId}&rs:Format=HTML4.0",
+      "changeDetectionKey": "noticeId",
+      "businessUnits": [
+        {"code": "ANR", "assetId": "3005", "name": "ANR Pipeline Company"},
+        {"code": "TCO", "assetId": "51", "name": "Columbia Gas Transmission"},
+        {"code": "CGT", "assetId": "14", "name": "Columbia Gulf Transmission"},
+        {"code": "MPC", "assetId": "26", "name": "Midwestern Gas Transmission"},
+        {"code": "NBPL", "assetId": "3029", "name": "Northern Border Pipeline"}
+      ]
+    }
+  },
+  "canonical": {
+    "description": "Canonical schema for unified notice storage (Fabric-ready)",
+    "fields": [
+      {"name": "source", "type": "string", "description": "Site identifier: enbridge | tceconnects"},
+      {"name": "pipeline", "type": "string", "description": "Business unit code (e.g., TE, ANR)"},
+      {"name": "pipelineName", "type": "string", "description": "Full pipeline company name"},
+      {"name": "noticeId", "type": "string", "description": "Unique notice identifier"},
+      {"name": "noticeType", "type": "string", "description": "Notice type (Maintenance, Capacity Constraint, etc.)"},
+      {"name": "status", "type": "string", "description": "Notice status (Initiate, Supersede, Cancel)"},
+      {"name": "isCritical", "type": "boolean", "description": "Critical notice flag"},
+      {"name": "title", "type": "string", "description": "Notice subject/title"},
+      {"name": "postedDate", "type": "datetime", "description": "When notice was posted"},
+      {"name": "effectiveDate", "type": "datetime", "description": "When notice takes effect"},
+      {"name": "endDate", "type": "datetime", "description": "When notice expires"},
+      {"name": "responseRequired", "type": "boolean", "description": "Whether response is required"},
+      {"name": "rawUrl", "type": "string", "description": "Source URL for the notice"},
+      {"name": "blobPath", "type": "string", "description": "Path to raw content in storage"},
+      {"name": "scrapedAt", "type": "datetime", "description": "When we captured this notice"}
+    ]
+  }
+}
