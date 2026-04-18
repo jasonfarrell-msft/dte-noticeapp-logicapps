@@ -1,0 +1,28 @@
+{
+  "entries": [
+    {
+      "persistent_name": "Hopper",
+      "role": "Lead",
+      "universe": "computing-pioneers",
+      "created_at": "2026-04-17T20:10:36.969-04:00",
+      "legacy_named": false,
+      "status": "active"
+    },
+    {
+      "persistent_name": "Grace",
+      "role": "DevOps/Infra",
+      "universe": "computing-pioneers",
+      "created_at": "2026-04-17T20:10:36.969-04:00",
+      "legacy_named": false,
+      "status": "active"
+    },
+    {
+      "persistent_name": "Lovelace",
+      "role": "Tester",
+      "universe": "computing-pioneers",
+      "created_at": "2026-04-17T20:10:36.969-04:00",
+      "legacy_named": false,
+      "status": "active"
+    }
+  ]
+}
