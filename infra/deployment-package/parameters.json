@@ -1,0 +1,22 @@
+{
+  "storageAccountName": {
+    "type": "String",
+    "value": "@appsetting('StorageAccountName')"
+  },
+  "foundryEndpoint": {
+    "type": "String",
+    "value": "@appsetting('FoundryEndpoint')"
+  },
+  "foundryApiKey": {
+    "type": "String",
+    "value": "@appsetting('FoundryApiKey')"
+  },
+  "foundryDeploymentName": {
+    "type": "String",
+    "value": "@appsetting('FoundryDeploymentName')"
+  },
+  "backfillDays": {
+    "type": "Int",
+    "value": 10
+  }
+}

@@ -1,5 +1,6 @@
 // Azure Key Vault for secrets management
 // Stores storage connection strings, API keys, and credentials
+// Supports VNet isolation with service endpoints
 
 @description('Location for the Key Vault')
 param location string
@@ -21,6 +22,18 @@ param storageConnectionString string = ''
 @secure()
 param foundryApiKey string = ''
 
+@description('Enable VNet restrictions (deny public access)')
+param enableVnetRestrictions bool = false
+
+@description('Subnet IDs to allow access (when VNet restrictions enabled)')
+param allowedSubnetIds array = []
+
+// Build virtual network rules from allowed subnet IDs
+var virtualNetworkRules = [for subnetId in allowedSubnetIds: {
+  id: subnetId
+  ignoreMissingVnetServiceEndpoint: false
+}]
+
 // Key Vault resource
 resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
   name: keyVaultName
@@ -38,10 +51,12 @@ resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
     enableSoftDelete: true
     softDeleteRetentionInDays: 90
     enableRbacAuthorization: true
-    publicNetworkAccess: 'Enabled'
+    publicNetworkAccess: enableVnetRestrictions ? 'Disabled' : 'Enabled'
     networkAcls: {
-      defaultAction: 'Allow'
+      defaultAction: enableVnetRestrictions ? 'Deny' : 'Allow'
       bypass: 'AzureServices'
+      virtualNetworkRules: enableVnetRestrictions ? virtualNetworkRules : []
+      ipRules: []
     }
   }
 }

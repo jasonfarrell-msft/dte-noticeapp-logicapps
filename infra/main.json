@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.41.2.15936",
-      "templateHash": "7972425088800303769"
+      "templateHash": "8275181884069336436"
     }
   },
   "parameters": {
@@ -28,7 +28,8 @@
       "defaultValue": {
         "Project": "Critical Notice Ingestion",
         "Environment": "[parameters('environment')]",
-        "ManagedBy": "Bicep"
+        "ManagedBy": "Bicep",
+        "SecurityControl": "Ignore"
       },
       "metadata": {
         "description": "Tags to apply to all resources"
@@ -52,7 +53,21 @@
       "type": "string",
       "defaultValue": "logic-dte-noticeapp-eus2-mx01",
       "metadata": {
-        "description": "Logic App name"
+        "description": "Logic App Standard name"
+      }
+    },
+    "appServicePlanName": {
+      "type": "string",
+      "defaultValue": "asp-dte-noticeapp-eus2-mx01",
+      "metadata": {
+        "description": "App Service Plan name"
+      }
+    },
+    "vnetName": {
+      "type": "string",
+      "defaultValue": "vnet-dte-noticeapp-eus2-mx01",
+      "metadata": {
+        "description": "VNet name"
       }
     },
     "dataFactoryName": {
@@ -61,46 +76,53 @@
       "metadata": {
         "description": "Data Factory name"
       }
+    },
+    "foundryAccountName": {
+      "type": "string",
+      "defaultValue": "cog-dte-noticeapp-eus2-mx01",
+      "metadata": {
+        "description": "Foundry account name"
+      }
     }
   },
   "resources": [
     {
       "type": "Microsoft.Authorization/roleAssignments",
       "apiVersion": "2022-04-01",
-      "name": "[guid(resourceGroup().id, parameters('storageAccountName'), parameters('logicAppName'), 'scanner', 'StorageBlobDataOwner')]",
+      "name": "[guid(resourceGroup().id, parameters('storageAccountName'), parameters('logicAppName'), 'StorageBlobDataOwner')]",
       "properties": {
         "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'b7e6dc6d-f1e8-4753-8033-0f276bb0955b')]",
-        "principalId": "[reference(resourceId('Microsoft.Resources/deployments', 'logicapp-deployment'), '2025-04-01').outputs.logicAppPrincipalId.value]",
+        "principalId": "[reference(resourceId('Microsoft.Resources/deployments', 'logicapp-standard-deployment'), '2025-04-01').outputs.logicAppPrincipalId.value]",
         "principalType": "ServicePrincipal"
       },
       "dependsOn": [
-        "[resourceId('Microsoft.Resources/deployments', 'logicapp-deployment')]"
+        "[resourceId('Microsoft.Resources/deployments', 'logicapp-standard-deployment')]"
       ]
     },
     {
       "type": "Microsoft.Authorization/roleAssignments",
       "apiVersion": "2022-04-01",
-      "name": "[guid(resourceGroup().id, parameters('storageAccountName'), parameters('logicAppName'), 'downloader', 'StorageBlobDataContributor')]",
+      "name": "[guid(resourceGroup().id, parameters('keyVaultName'), parameters('logicAppName'), 'KeyVaultSecretsUser')]",
       "properties": {
-        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'ba92f5b4-2d11-453d-a403-e96b0029c9fe')]",
-        "principalId": "[reference(resourceId('Microsoft.Resources/deployments', 'logicapp-deployment'), '2025-04-01').outputs.downloaderPrincipalId.value]",
+        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '4633458b-17de-408a-b874-0445c86b69e6')]",
+        "principalId": "[reference(resourceId('Microsoft.Resources/deployments', 'logicapp-standard-deployment'), '2025-04-01').outputs.logicAppPrincipalId.value]",
         "principalType": "ServicePrincipal"
       },
       "dependsOn": [
-        "[resourceId('Microsoft.Resources/deployments', 'logicapp-deployment')]"
+        "[resourceId('Microsoft.Resources/deployments', 'logicapp-standard-deployment')]"
       ]
     },
     {
       "type": "Microsoft.Authorization/roleAssignments",
       "apiVersion": "2022-04-01",
-      "name": "[guid(resourceGroup().id, parameters('storageAccountName'), parameters('logicAppName'), 'parser', 'StorageBlobDataContributor')]",
+      "name": "[guid(resourceGroup().id, parameters('foundryAccountName'), parameters('logicAppName'), 'CognitiveServicesUser')]",
       "properties": {
-        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'ba92f5b4-2d11-453d-a403-e96b0029c9fe')]",
-        "principalId": "[reference(resourceId('Microsoft.Resources/deployments', 'logicapp-deployment'), '2025-04-01').outputs.parserPrincipalId.value]",
+        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'a97b65f3-24c7-4388-baec-2e87135dc908')]",
+        "principalId": "[reference(resourceId('Microsoft.Resources/deployments', 'logicapp-standard-deployment'), '2025-04-01').outputs.logicAppPrincipalId.value]",
         "principalType": "ServicePrincipal"
       },
       "dependsOn": [
-        "[resourceId('Microsoft.Resources/deployments', 'logicapp-deployment')]"
+        "[resourceId('Microsoft.Resources/deployments', 'logicapp-standard-deployment')]"
       ]
     },
     {
@@ -132,6 +154,231 @@
     {
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2025-04-01",
+      "name": "vnet-deployment",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "vnetName": {
+            "value": "[parameters('vnetName')]"
+          },
+          "tags": {
+            "value": "[parameters('tags')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.41.2.15936",
+              "templateHash": "11763349182915157573"
+            }
+          },
+          "parameters": {
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Location for resources"
+              }
+            },
+            "vnetName": {
+              "type": "string",
+              "defaultValue": "vnet-dte-noticeapp-eus2-mx01",
+              "metadata": {
+                "description": "VNet name"
+              }
+            },
+            "tags": {
+              "type": "object",
+              "defaultValue": {},
+              "metadata": {
+                "description": "Tags to apply to resources"
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Network/virtualNetworks",
+              "apiVersion": "2024-01-01",
+              "name": "[parameters('vnetName')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "addressSpace": {
+                  "addressPrefixes": [
+                    "10.0.0.0/16"
+                  ]
+                },
+                "subnets": [
+                  {
+                    "name": "snet-logicapps",
+                    "properties": {
+                      "addressPrefix": "10.0.1.0/24",
+                      "delegations": [
+                        {
+                          "name": "delegation-webserverfarms",
+                          "properties": {
+                            "serviceName": "Microsoft.Web/serverFarms"
+                          }
+                        }
+                      ],
+                      "serviceEndpoints": [
+                        {
+                          "service": "Microsoft.Storage",
+                          "locations": [
+                            "[parameters('location')]"
+                          ]
+                        },
+                        {
+                          "service": "Microsoft.KeyVault",
+                          "locations": [
+                            "[parameters('location')]"
+                          ]
+                        }
+                      ],
+                      "networkSecurityGroup": {
+                        "id": "[resourceId('Microsoft.Network/networkSecurityGroups', format('nsg-logicapps-{0}', parameters('location')))]"
+                      }
+                    }
+                  },
+                  {
+                    "name": "snet-privateendpoints",
+                    "properties": {
+                      "addressPrefix": "10.0.2.0/24",
+                      "privateEndpointNetworkPolicies": "Disabled"
+                    }
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/networkSecurityGroups', format('nsg-logicapps-{0}', parameters('location')))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Network/networkSecurityGroups",
+              "apiVersion": "2024-01-01",
+              "name": "[format('nsg-logicapps-{0}', parameters('location'))]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "securityRules": [
+                  {
+                    "name": "AllowAzureCloudOutbound",
+                    "properties": {
+                      "priority": 100,
+                      "direction": "Outbound",
+                      "access": "Allow",
+                      "protocol": "*",
+                      "sourceAddressPrefix": "*",
+                      "sourcePortRange": "*",
+                      "destinationAddressPrefix": "AzureCloud",
+                      "destinationPortRange": "*",
+                      "description": "Allow outbound to Azure services"
+                    }
+                  },
+                  {
+                    "name": "AllowInternetOutbound",
+                    "properties": {
+                      "priority": 200,
+                      "direction": "Outbound",
+                      "access": "Allow",
+                      "protocol": "*",
+                      "sourceAddressPrefix": "*",
+                      "sourcePortRange": "*",
+                      "destinationAddressPrefix": "Internet",
+                      "destinationPortRange": "*",
+                      "description": "Allow outbound to internet (for external APIs like Enbridge)"
+                    }
+                  },
+                  {
+                    "name": "AllowLogicAppsInfraInbound",
+                    "properties": {
+                      "priority": 100,
+                      "direction": "Inbound",
+                      "access": "Allow",
+                      "protocol": "*",
+                      "sourceAddressPrefix": "LogicAppsManagement",
+                      "sourcePortRange": "*",
+                      "destinationAddressPrefix": "VirtualNetwork",
+                      "destinationPortRange": "*",
+                      "description": "Allow Logic Apps management traffic"
+                    }
+                  },
+                  {
+                    "name": "AllowAzureLoadBalancerInbound",
+                    "properties": {
+                      "priority": 110,
+                      "direction": "Inbound",
+                      "access": "Allow",
+                      "protocol": "*",
+                      "sourceAddressPrefix": "AzureLoadBalancer",
+                      "sourcePortRange": "*",
+                      "destinationAddressPrefix": "*",
+                      "destinationPortRange": "*",
+                      "description": "Allow Azure Load Balancer probes"
+                    }
+                  }
+                ]
+              }
+            }
+          ],
+          "outputs": {
+            "vnetId": {
+              "type": "string",
+              "metadata": {
+                "description": "VNet resource ID"
+              },
+              "value": "[resourceId('Microsoft.Network/virtualNetworks', parameters('vnetName'))]"
+            },
+            "vnetName": {
+              "type": "string",
+              "metadata": {
+                "description": "VNet name"
+              },
+              "value": "[parameters('vnetName')]"
+            },
+            "logicAppsSubnetId": {
+              "type": "string",
+              "metadata": {
+                "description": "Logic Apps subnet resource ID"
+              },
+              "value": "[reference(resourceId('Microsoft.Network/virtualNetworks', parameters('vnetName')), '2024-01-01').subnets[0].id]"
+            },
+            "privateEndpointsSubnetId": {
+              "type": "string",
+              "metadata": {
+                "description": "Private Endpoints subnet resource ID"
+              },
+              "value": "[reference(resourceId('Microsoft.Network/virtualNetworks', parameters('vnetName')), '2024-01-01').subnets[1].id]"
+            },
+            "logicAppsSubnetName": {
+              "type": "string",
+              "metadata": {
+                "description": "Logic Apps subnet name"
+              },
+              "value": "snet-logicapps"
+            },
+            "privateEndpointsSubnetName": {
+              "type": "string",
+              "metadata": {
+                "description": "Private Endpoints subnet name"
+              },
+              "value": "snet-privateendpoints"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
       "name": "storage-deployment",
       "properties": {
         "expressionEvaluationOptions": {
@@ -147,6 +394,14 @@
           },
           "tags": {
             "value": "[parameters('tags')]"
+          },
+          "enableVnetRestrictions": {
+            "value": true
+          },
+          "allowedSubnetIds": {
+            "value": [
+              "[reference(resourceId('Microsoft.Resources/deployments', 'vnet-deployment'), '2025-04-01').outputs.logicAppsSubnetId.value]"
+            ]
           }
         },
         "template": {
@@ -156,7 +411,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.41.2.15936",
-              "templateHash": "17016225991010537499"
+              "templateHash": "3653528514909508934"
             }
           },
           "parameters": {
@@ -178,7 +433,33 @@
               "metadata": {
                 "description": "Tags to apply to resources"
               }
+            },
+            "enableVnetRestrictions": {
+              "type": "bool",
+              "defaultValue": false,
+              "metadata": {
+                "description": "Enable VNet restrictions (deny public access)"
+              }
+            },
+            "allowedSubnetIds": {
+              "type": "array",
+              "defaultValue": [],
+              "metadata": {
+                "description": "Subnet IDs to allow access (when VNet restrictions enabled)"
+              }
             }
+          },
+          "variables": {
+            "copy": [
+              {
+                "name": "virtualNetworkRules",
+                "count": "[length(parameters('allowedSubnetIds'))]",
+                "input": {
+                  "id": "[parameters('allowedSubnetIds')[copyIndex('virtualNetworkRules')]]",
+                  "action": "Allow"
+                }
+              }
+            ]
           },
           "resources": [
             {
@@ -196,10 +477,12 @@
                 "supportsHttpsTrafficOnly": true,
                 "minimumTlsVersion": "TLS1_2",
                 "allowBlobPublicAccess": false,
-                "allowSharedKeyAccess": false,
+                "allowSharedKeyAccess": true,
                 "networkAcls": {
-                  "defaultAction": "Allow",
-                  "bypass": "AzureServices"
+                  "defaultAction": "[if(parameters('enableVnetRestrictions'), 'Deny', 'Allow')]",
+                  "bypass": "AzureServices",
+                  "virtualNetworkRules": "[if(parameters('enableVnetRestrictions'), variables('virtualNetworkRules'), createArray())]",
+                  "ipRules": []
                 }
               }
             },
@@ -289,10 +572,20 @@
                 "description": "Storage account blob endpoint"
               },
               "value": "[reference(resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName')), '2023-01-01').primaryEndpoints.blob]"
+            },
+            "storageConnectionString": {
+              "type": "string",
+              "metadata": {
+                "description": "Storage account connection string (for Logic Apps Standard)"
+              },
+              "value": "[format('DefaultEndpointsProtocol=https;AccountName={0};AccountKey={1};EndpointSuffix=core.windows.net', parameters('storageAccountName'), listKeys(resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName')), '2023-01-01').keys[0].value)]"
             }
           }
         }
-      }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', 'vnet-deployment')]"
+      ]
     },
     {
       "type": "Microsoft.Resources/deployments",
@@ -309,6 +602,9 @@
           },
           "tags": {
             "value": "[parameters('tags')]"
+          },
+          "foundryAccountName": {
+            "value": "[parameters('foundryAccountName')]"
           }
         },
         "template": {
@@ -318,7 +614,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.41.2.15936",
-              "templateHash": "4555284551954275017"
+              "templateHash": "18310568277298712456"
             }
           },
           "parameters": {
@@ -355,21 +651,21 @@
             },
             "deploymentName": {
               "type": "string",
-              "defaultValue": "gpt-4.1-mini",
+              "defaultValue": "gpt-5.2",
               "metadata": {
                 "description": "GPT model deployment name"
               }
             },
             "modelVersion": {
               "type": "string",
-              "defaultValue": "2025-04-14",
+              "defaultValue": "2025-12-11",
               "metadata": {
                 "description": "GPT model version"
               }
             },
             "deploymentCapacity": {
               "type": "int",
-              "defaultValue": 30,
+              "defaultValue": 1,
               "metadata": {
                 "description": "Deployment capacity (TPM in thousands)"
               }
@@ -378,11 +674,11 @@
           "resources": [
             {
               "type": "Microsoft.CognitiveServices/accounts",
-              "apiVersion": "2023-05-01",
+              "apiVersion": "2024-10-01",
               "name": "[parameters('foundryAccountName')]",
               "location": "[parameters('location')]",
               "tags": "[union(parameters('tags'), createObject('Service', 'Foundry-AI-Extraction'))]",
-              "kind": "OpenAI",
+              "kind": "AIServices",
               "sku": {
                 "name": "[parameters('sku')]"
               },
@@ -392,24 +688,21 @@
                 "networkAcls": {
                   "defaultAction": "Allow"
                 },
-                "disableLocalAuth": false,
-                "apiProperties": {
-                  "statisticsEnabled": false
-                }
+                "disableLocalAuth": false
               }
             },
             {
               "type": "Microsoft.CognitiveServices/accounts/deployments",
-              "apiVersion": "2023-05-01",
+              "apiVersion": "2024-10-01",
               "name": "[format('{0}/{1}', parameters('foundryAccountName'), parameters('deploymentName'))]",
               "sku": {
-                "name": "Standard",
+                "name": "DataZoneStandard",
                 "capacity": "[parameters('deploymentCapacity')]"
               },
               "properties": {
                 "model": {
                   "format": "OpenAI",
-                  "name": "gpt-4.1-mini",
+                  "name": "gpt-5.2",
                   "version": "[parameters('modelVersion')]"
                 },
                 "versionUpgradeOption": "OnceNewDefaultVersionAvailable",
@@ -433,7 +726,7 @@
               "metadata": {
                 "description": "Foundry endpoint URL"
               },
-              "value": "[reference(resourceId('Microsoft.CognitiveServices/accounts', parameters('foundryAccountName')), '2023-05-01').endpoint]"
+              "value": "[reference(resourceId('Microsoft.CognitiveServices/accounts', parameters('foundryAccountName')), '2024-10-01').endpoint]"
             },
             "foundryResourceId": {
               "type": "string",
@@ -454,1451 +747,11 @@
               "metadata": {
                 "description": "Foundry API key (primary)"
               },
-              "value": "[listKeys(resourceId('Microsoft.CognitiveServices/accounts', parameters('foundryAccountName')), '2023-05-01').key1]"
+              "value": "[listKeys(resourceId('Microsoft.CognitiveServices/accounts', parameters('foundryAccountName')), '2024-10-01').key1]"
             }
           }
         }
       }
-    },
-    {
-      "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2025-04-01",
-      "name": "logicapp-deployment",
-      "properties": {
-        "expressionEvaluationOptions": {
-          "scope": "inner"
-        },
-        "mode": "Incremental",
-        "parameters": {
-          "location": {
-            "value": "[parameters('location')]"
-          },
-          "logicAppName": {
-            "value": "[parameters('logicAppName')]"
-          },
-          "storageAccountName": {
-            "value": "[parameters('storageAccountName')]"
-          },
-          "foundryEndpoint": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'foundry-deployment'), '2025-04-01').outputs.foundryEndpoint.value]"
-          },
-          "foundryApiKey": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'foundry-deployment'), '2025-04-01').outputs.foundryApiKey.value]"
-          },
-          "foundryDeploymentName": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'foundry-deployment'), '2025-04-01').outputs.deploymentName.value]"
-          },
-          "tags": {
-            "value": "[parameters('tags')]"
-          }
-        },
-        "template": {
-          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
-          "contentVersion": "1.0.0.0",
-          "metadata": {
-            "_generator": {
-              "name": "bicep",
-              "version": "0.41.2.15936",
-              "templateHash": "974925874043038820"
-            }
-          },
-          "parameters": {
-            "location": {
-              "type": "string",
-              "metadata": {
-                "description": "Location for resources"
-              }
-            },
-            "logicAppName": {
-              "type": "string",
-              "metadata": {
-                "description": "Base name for Logic App resources"
-              }
-            },
-            "tags": {
-              "type": "object",
-              "defaultValue": {},
-              "metadata": {
-                "description": "Tags to apply to resources"
-              }
-            },
-            "storageAccountName": {
-              "type": "string",
-              "metadata": {
-                "description": "Storage account name for blob operations"
-              }
-            },
-            "foundryEndpoint": {
-              "type": "string",
-              "metadata": {
-                "description": "Microsoft Foundry endpoint URL"
-              }
-            },
-            "foundryApiKey": {
-              "type": "securestring",
-              "metadata": {
-                "description": "Microsoft Foundry API key"
-              }
-            },
-            "foundryDeploymentName": {
-              "type": "string",
-              "metadata": {
-                "description": "Microsoft Foundry deployment name"
-              }
-            }
-          },
-          "variables": {
-            "$fxv#0": {
-              "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
-              "contentVersion": "2.0.0",
-              "parameters": {
-                "storageAccountName": {
-                  "type": "String"
-                },
-                "downloaderCallbackUrl": {
-                  "type": "String"
-                },
-                "backfillDays": {
-                  "type": "Int",
-                  "defaultValue": 10
-                }
-              },
-              "triggers": {
-                "Recurrence_15_Minutes": {
-                  "type": "Recurrence",
-                  "recurrence": {
-                    "frequency": "Minute",
-                    "interval": 15
-                  }
-                }
-              },
-              "actions": {
-                "Initialize_BackfillCutoffDate": {
-                  "type": "InitializeVariable",
-                  "inputs": {
-                    "variables": [
-                      {
-                        "name": "backfillCutoffDate",
-                        "type": "string",
-                        "value": "@{formatDateTime(addDays(utcNow(), mul(-1, parameters('backfillDays'))), 'yyyy-MM-dd')}"
-                      }
-                    ]
-                  },
-                  "runAfter": {}
-                },
-                "Initialize_EnbridgeUnits": {
-                  "type": "InitializeVariable",
-                  "inputs": {
-                    "variables": [
-                      {
-                        "name": "enbridgeUnits",
-                        "type": "array",
-                        "value": [
-                          "AG",
-                          "BGS",
-                          "BIG",
-                          "BSP",
-                          "EG",
-                          "ET",
-                          "GB",
-                          "GPL",
-                          "MCGP",
-                          "MB",
-                          "MNCA",
-                          "MNUS",
-                          "MR",
-                          "NPC",
-                          "NXCA",
-                          "NXUS",
-                          "SESH",
-                          "SG",
-                          "SR",
-                          "STT",
-                          "TE",
-                          "TPGS",
-                          "VCP",
-                          "WE",
-                          "WRGS"
-                        ]
-                      }
-                    ]
-                  },
-                  "runAfter": {
-                    "Initialize_BackfillCutoffDate": [
-                      "Succeeded"
-                    ]
-                  }
-                },
-                "Initialize_TCeConnectsUnits": {
-                  "type": "InitializeVariable",
-                  "inputs": {
-                    "variables": [
-                      {
-                        "name": "tceconnectsUnits",
-                        "type": "array",
-                        "value": [
-                          {
-                            "code": "ANR",
-                            "assetId": "3005",
-                            "name": "ANR Pipeline Company"
-                          },
-                          {
-                            "code": "TCO",
-                            "assetId": "51",
-                            "name": "Columbia Gas Transmission"
-                          },
-                          {
-                            "code": "CGT",
-                            "assetId": "14",
-                            "name": "Columbia Gulf Transmission"
-                          },
-                          {
-                            "code": "MPC",
-                            "assetId": "26",
-                            "name": "Midwestern Gas Transmission"
-                          },
-                          {
-                            "code": "NBPL",
-                            "assetId": "3029",
-                            "name": "Northern Border Pipeline"
-                          }
-                        ]
-                      }
-                    ]
-                  },
-                  "runAfter": {
-                    "Initialize_EnbridgeUnits": [
-                      "Succeeded"
-                    ]
-                  }
-                },
-                "SCOPE_Enbridge_Scanner": {
-                  "type": "Scope",
-                  "actions": {
-                    "For_Each_Enbridge_Unit": {
-                      "type": "Foreach",
-                      "foreach": "@variables('enbridgeUnits')",
-                      "actions": {
-                        "Enbridge_Get_NoticesList": {
-                          "type": "Http",
-                          "inputs": {
-                            "method": "GET",
-                            "uri": "https://infopost.enbridge.com/infopost/noticesList.asp?pipe=@{items('For_Each_Enbridge_Unit')}&type=CRI",
-                            "headers": {
-                              "User-Agent": "CriticalNotice-Scanner/2.0"
-                            }
-                          },
-                          "runAfter": {}
-                        },
-                        "Enbridge_Get_LastSeen": {
-                          "type": "Http",
-                          "inputs": {
-                            "method": "GET",
-                            "uri": "https://@{parameters('storageAccountName')}.blob.core.windows.net/critical-notices/tracking/enbridge/@{items('For_Each_Enbridge_Unit')}.json",
-                            "authentication": {
-                              "type": "ManagedServiceIdentity",
-                              "audience": "https://storage.azure.com/"
-                            },
-                            "headers": {
-                              "x-ms-version": "2020-10-02"
-                            }
-                          },
-                          "runAfter": {
-                            "Enbridge_Get_NoticesList": [
-                              "Succeeded"
-                            ]
-                          },
-                          "runtimeConfiguration": {
-                            "staticResult": {
-                              "name": "HTTP0",
-                              "staticResultOptions": "Disabled"
-                            }
-                          }
-                        },
-                        "Enbridge_Parse_Notices": {
-                          "type": "Compose",
-                          "inputs": "@split(body('Enbridge_Get_NoticesList'), '<tr')",
-                          "runAfter": {
-                            "Enbridge_Get_LastSeen": [
-                              "Succeeded",
-                              "Failed"
-                            ]
-                          }
-                        },
-                        "Enbridge_Extract_Notice_Data": {
-                          "type": "Select",
-                          "inputs": {
-                            "from": "@outputs('Enbridge_Parse_Notices')",
-                            "select": {
-                              "hasNotice": "@contains(item(), 'strKey1=')",
-                              "noticeId": "@if(contains(item(), 'strKey1='), split(split(item(), 'strKey1=')[1], '&')[0], '')",
-                              "postedDateRaw": "@if(and(contains(item(), '</td><td>'), contains(item(), '/')), split(split(item(), '</td><td>')[1], '</td>')[0], '')"
-                            }
-                          },
-                          "runAfter": {
-                            "Enbridge_Parse_Notices": [
-                              "Succeeded"
-                            ]
-                          }
-                        },
-                        "Enbridge_Filter_Valid": {
-                          "type": "Query",
-                          "inputs": {
-                            "from": "@body('Enbridge_Extract_Notice_Data')",
-                            "where": "@and(not(equals(item()?['noticeId'], '')), item()?['hasNotice'])"
-                          },
-                          "runAfter": {
-                            "Enbridge_Extract_Notice_Data": [
-                              "Succeeded"
-                            ]
-                          }
-                        },
-                        "Enbridge_Process_Each_Notice": {
-                          "type": "Foreach",
-                          "foreach": "@body('Enbridge_Filter_Valid')",
-                          "actions": {
-                            "Enbridge_Check_Within_Window": {
-                              "type": "If",
-                              "expression": {
-                                "and": [
-                                  {
-                                    "not": {
-                                      "equals": [
-                                        "@items('Enbridge_Process_Each_Notice')?['postedDateRaw']",
-                                        ""
-                                      ]
-                                    }
-                                  }
-                                ]
-                              },
-                              "actions": {
-                                "Enbridge_Check_Already_Processed": {
-                                  "type": "Http",
-                                  "inputs": {
-                                    "method": "HEAD",
-                                    "uri": "https://@{parameters('storageAccountName')}.blob.core.windows.net/critical-notices/notices/enbridge/@{items('For_Each_Enbridge_Unit')}/@{items('Enbridge_Process_Each_Notice')?['noticeId']}.json",
-                                    "authentication": {
-                                      "type": "ManagedServiceIdentity",
-                                      "audience": "https://storage.azure.com/"
-                                    },
-                                    "headers": {
-                                      "x-ms-version": "2020-10-02"
-                                    }
-                                  },
-                                  "runAfter": {},
-                                  "runtimeConfiguration": {
-                                    "staticResult": {
-                                      "name": "HTTP_HEAD",
-                                      "staticResultOptions": "Disabled"
-                                    }
-                                  }
-                                },
-                                "Enbridge_Download_If_New": {
-                                  "type": "If",
-                                  "expression": {
-                                    "equals": [
-                                      "@outputs('Enbridge_Check_Already_Processed')['statusCode']",
-                                      404
-                                    ]
-                                  },
-                                  "actions": {
-                                    "Enbridge_Call_Downloader": {
-                                      "type": "Http",
-                                      "inputs": {
-                                        "method": "POST",
-                                        "uri": "@{parameters('downloaderCallbackUrl')}",
-                                        "headers": {
-                                          "Content-Type": "application/json"
-                                        },
-                                        "body": {
-                                          "source": "enbridge",
-                                          "pipeline": "@{items('For_Each_Enbridge_Unit')}",
-                                          "noticeId": "@{items('Enbridge_Process_Each_Notice')?['noticeId']}",
-                                          "url": "https://infopost.enbridge.com/infopost/NoticeListDetail.asp?strKey1=@{items('Enbridge_Process_Each_Notice')?['noticeId']}&type=CRI&Embed=2&pipe=@{items('For_Each_Enbridge_Unit')}",
-                                          "postedDate": "@{items('Enbridge_Process_Each_Notice')?['postedDateRaw']}"
-                                        }
-                                      },
-                                      "runAfter": {}
-                                    }
-                                  },
-                                  "else": {
-                                    "actions": {}
-                                  },
-                                  "runAfter": {
-                                    "Enbridge_Check_Already_Processed": [
-                                      "Succeeded",
-                                      "Failed"
-                                    ]
-                                  }
-                                }
-                              },
-                              "else": {
-                                "actions": {}
-                              },
-                              "runAfter": {}
-                            }
-                          },
-                          "runAfter": {
-                            "Enbridge_Filter_Valid": [
-                              "Succeeded"
-                            ]
-                          },
-                          "runtimeConfiguration": {
-                            "concurrency": {
-                              "repetitions": 3
-                            }
-                          }
-                        },
-                        "Enbridge_Update_Tracking": {
-                          "type": "Http",
-                          "inputs": {
-                            "method": "PUT",
-                            "uri": "https://@{parameters('storageAccountName')}.blob.core.windows.net/critical-notices/tracking/enbridge/@{items('For_Each_Enbridge_Unit')}.json",
-                            "authentication": {
-                              "type": "ManagedServiceIdentity",
-                              "audience": "https://storage.azure.com/"
-                            },
-                            "headers": {
-                              "x-ms-version": "2020-10-02",
-                              "x-ms-blob-type": "BlockBlob",
-                              "Content-Type": "application/json"
-                            },
-                            "body": {
-                              "source": "enbridge",
-                              "pipeline": "@{items('For_Each_Enbridge_Unit')}",
-                              "lastChecked": "@{utcNow()}",
-                              "lastSeenNoticeId": "@{if(greater(length(body('Enbridge_Filter_Valid')), 0), first(body('Enbridge_Filter_Valid'))?['noticeId'], '')}",
-                              "noticesInWindow": "@{length(body('Enbridge_Filter_Valid'))}"
-                            }
-                          },
-                          "runAfter": {
-                            "Enbridge_Process_Each_Notice": [
-                              "Succeeded"
-                            ]
-                          }
-                        }
-                      },
-                      "runAfter": {},
-                      "runtimeConfiguration": {
-                        "concurrency": {
-                          "repetitions": 5
-                        }
-                      }
-                    }
-                  },
-                  "runAfter": {
-                    "Initialize_TCeConnectsUnits": [
-                      "Succeeded"
-                    ]
-                  }
-                },
-                "SCOPE_TCeConnects_Scanner": {
-                  "type": "Scope",
-                  "actions": {
-                    "For_Each_TCeConnects_Unit": {
-                      "type": "Foreach",
-                      "foreach": "@variables('tceconnectsUnits')",
-                      "actions": {
-                        "TCeConnects_Get_NoticesList_JSON": {
-                          "type": "Http",
-                          "inputs": {
-                            "method": "GET",
-                            "uri": "https://www.tceconnects.com/infopost/webmethods/SSRS_ListCriticalNotices.aspx?assetid=@{items('For_Each_TCeConnects_Unit')?['assetId']}&page=1&rows=100",
-                            "headers": {
-                              "User-Agent": "CriticalNotice-Scanner/2.0",
-                              "Accept": "application/json"
-                            }
-                          },
-                          "runAfter": {}
-                        },
-                        "TCeConnects_Parse_JSON": {
-                          "type": "ParseJson",
-                          "inputs": {
-                            "content": "@body('TCeConnects_Get_NoticesList_JSON')",
-                            "schema": {
-                              "type": "object",
-                              "properties": {
-                                "total": {
-                                  "type": "string"
-                                },
-                                "page": {
-                                  "type": "string"
-                                },
-                                "records": {
-                                  "type": "string"
-                                },
-                                "rows": {
-                                  "type": "array",
-                                  "items": {
-                                    "type": "object",
-                                    "properties": {
-                                      "id": {
-                                        "type": "string"
-                                      },
-                                      "cell": {
-                                        "type": "array",
-                                        "items": {
-                                          "type": "string"
-                                        }
-                                      }
-                                    }
-                                  }
-                                }
-                              }
-                            }
-                          },
-                          "runAfter": {
-                            "TCeConnects_Get_NoticesList_JSON": [
-                              "Succeeded"
-                            ]
-                          }
-                        },
-                        "TCeConnects_Process_Each_Notice": {
-                          "type": "Foreach",
-                          "foreach": "@body('TCeConnects_Parse_JSON')?['rows']",
-                          "actions": {
-                            "TCeConnects_Extract_Notice_Fields": {
-                              "type": "Compose",
-                              "inputs": {
-                                "noticeId": "@{items('TCeConnects_Process_Each_Notice')?['cell'][0]}",
-                                "title": "@{items('TCeConnects_Process_Each_Notice')?['cell'][1]}",
-                                "postedDate": "@{items('TCeConnects_Process_Each_Notice')?['cell'][2]}"
-                              },
-                              "runAfter": {}
-                            },
-                            "TCeConnects_Check_Already_Processed": {
-                              "type": "Http",
-                              "inputs": {
-                                "method": "HEAD",
-                                "uri": "https://@{parameters('storageAccountName')}.blob.core.windows.net/critical-notices/notices/tceconnects/@{items('For_Each_TCeConnects_Unit')?['code']}/@{outputs('TCeConnects_Extract_Notice_Fields')?['noticeId']}.json",
-                                "authentication": {
-                                  "type": "ManagedServiceIdentity",
-                                  "audience": "https://storage.azure.com/"
-                                },
-                                "headers": {
-                                  "x-ms-version": "2020-10-02"
-                                }
-                              },
-                              "runAfter": {
-                                "TCeConnects_Extract_Notice_Fields": [
-                                  "Succeeded"
-                                ]
-                              },
-                              "runtimeConfiguration": {
-                                "staticResult": {
-                                  "name": "HTTP_HEAD",
-                                  "staticResultOptions": "Disabled"
-                                }
-                              }
-                            },
-                            "TCeConnects_Download_If_New": {
-                              "type": "If",
-                              "expression": {
-                                "equals": [
-                                  "@outputs('TCeConnects_Check_Already_Processed')['statusCode']",
-                                  404
-                                ]
-                              },
-                              "actions": {
-                                "TCeConnects_Call_Downloader": {
-                                  "type": "Http",
-                                  "inputs": {
-                                    "method": "POST",
-                                    "uri": "@{parameters('downloaderCallbackUrl')}",
-                                    "headers": {
-                                      "Content-Type": "application/json"
-                                    },
-                                    "body": {
-                                      "source": "tceconnects",
-                                      "pipeline": "@{items('For_Each_TCeConnects_Unit')?['code']}",
-                                      "pipelineName": "@{items('For_Each_TCeConnects_Unit')?['name']}",
-                                      "assetId": "@{items('For_Each_TCeConnects_Unit')?['assetId']}",
-                                      "noticeId": "@{outputs('TCeConnects_Extract_Notice_Fields')?['noticeId']}",
-                                      "title": "@{outputs('TCeConnects_Extract_Notice_Fields')?['title']}",
-                                      "url": "https://www.tceconnects.com/infopost/ReportViewer.aspx?%2fInfoPost%2fNoticesSubreport&pNoticeId=@{outputs('TCeConnects_Extract_Notice_Fields')?['noticeId']}&AssetNbr=@{items('For_Each_TCeConnects_Unit')?['assetId']}&rs:Format=HTML4.0",
-                                      "postedDate": "@{outputs('TCeConnects_Extract_Notice_Fields')?['postedDate']}"
-                                    }
-                                  },
-                                  "runAfter": {}
-                                }
-                              },
-                              "else": {
-                                "actions": {}
-                              },
-                              "runAfter": {
-                                "TCeConnects_Check_Already_Processed": [
-                                  "Succeeded",
-                                  "Failed"
-                                ]
-                              }
-                            }
-                          },
-                          "runAfter": {
-                            "TCeConnects_Parse_JSON": [
-                              "Succeeded"
-                            ]
-                          },
-                          "runtimeConfiguration": {
-                            "concurrency": {
-                              "repetitions": 3
-                            }
-                          }
-                        },
-                        "TCeConnects_Update_Tracking": {
-                          "type": "Http",
-                          "inputs": {
-                            "method": "PUT",
-                            "uri": "https://@{parameters('storageAccountName')}.blob.core.windows.net/critical-notices/tracking/tceconnects/@{items('For_Each_TCeConnects_Unit')?['code']}.json",
-                            "authentication": {
-                              "type": "ManagedServiceIdentity",
-                              "audience": "https://storage.azure.com/"
-                            },
-                            "headers": {
-                              "x-ms-version": "2020-10-02",
-                              "x-ms-blob-type": "BlockBlob",
-                              "Content-Type": "application/json"
-                            },
-                            "body": {
-                              "source": "tceconnects",
-                              "pipeline": "@{items('For_Each_TCeConnects_Unit')?['code']}",
-                              "pipelineName": "@{items('For_Each_TCeConnects_Unit')?['name']}",
-                              "assetId": "@{items('For_Each_TCeConnects_Unit')?['assetId']}",
-                              "lastChecked": "@{utcNow()}",
-                              "totalRecords": "@{body('TCeConnects_Parse_JSON')?['records']}"
-                            }
-                          },
-                          "runAfter": {
-                            "TCeConnects_Process_Each_Notice": [
-                              "Succeeded"
-                            ]
-                          }
-                        }
-                      },
-                      "runAfter": {},
-                      "runtimeConfiguration": {
-                        "concurrency": {
-                          "repetitions": 3
-                        }
-                      }
-                    }
-                  },
-                  "runAfter": {
-                    "Initialize_TCeConnectsUnits": [
-                      "Succeeded"
-                    ]
-                  }
-                },
-                "Update_Scan_Summary": {
-                  "type": "Http",
-                  "inputs": {
-                    "method": "PUT",
-                    "uri": "https://@{parameters('storageAccountName')}.blob.core.windows.net/critical-notices/tracking/scan-summary.json",
-                    "authentication": {
-                      "type": "ManagedServiceIdentity",
-                      "audience": "https://storage.azure.com/"
-                    },
-                    "headers": {
-                      "x-ms-version": "2020-10-02",
-                      "x-ms-blob-type": "BlockBlob",
-                      "Content-Type": "application/json"
-                    },
-                    "body": {
-                      "lastScanCompleted": "@{utcNow()}",
-                      "backfillWindowDays": "@{parameters('backfillDays')}",
-                      "backfillCutoffDate": "@{variables('backfillCutoffDate')}",
-                      "sitesScanned": [
-                        "enbridge",
-                        "tceconnects"
-                      ],
-                      "enbridgeUnits": 25,
-                      "tceconnectsUnits": 5
-                    }
-                  },
-                  "runAfter": {
-                    "SCOPE_Enbridge_Scanner": [
-                      "Succeeded"
-                    ],
-                    "SCOPE_TCeConnects_Scanner": [
-                      "Succeeded"
-                    ]
-                  }
-                }
-              },
-              "outputs": {}
-            },
-            "$fxv#1": {
-              "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
-              "contentVersion": "2.0.0",
-              "parameters": {
-                "storageAccountName": {
-                  "type": "String"
-                }
-              },
-              "triggers": {
-                "HTTP_Request": {
-                  "type": "Request",
-                  "kind": "Http",
-                  "inputs": {
-                    "schema": {
-                      "type": "object",
-                      "properties": {
-                        "source": {
-                          "type": "string",
-                          "description": "Source site: enbridge | tceconnects"
-                        },
-                        "pipeline": {
-                          "type": "string",
-                          "description": "Pipeline/business unit code"
-                        },
-                        "pipelineName": {
-                          "type": "string",
-                          "description": "Full pipeline name (optional)"
-                        },
-                        "noticeId": {
-                          "type": "string"
-                        },
-                        "title": {
-                          "type": "string",
-                          "description": "Notice title (from JSON list)"
-                        },
-                        "url": {
-                          "type": "string"
-                        },
-                        "postedDate": {
-                          "type": "string"
-                        },
-                        "assetId": {
-                          "type": "string",
-                          "description": "TCeConnects asset ID (optional)"
-                        }
-                      },
-                      "required": [
-                        "source",
-                        "pipeline",
-                        "noticeId",
-                        "url"
-                      ]
-                    }
-                  }
-                }
-              },
-              "actions": {
-                "Initialize_DateFolder": {
-                  "type": "InitializeVariable",
-                  "inputs": {
-                    "variables": [
-                      {
-                        "name": "dateFolder",
-                        "type": "string",
-                        "value": "@{formatDateTime(utcNow(), 'yyyy-MM-dd')}"
-                      }
-                    ]
-                  },
-                  "runAfter": {}
-                },
-                "HTTP_Get_NoticeDetail": {
-                  "type": "Http",
-                  "inputs": {
-                    "method": "GET",
-                    "uri": "@{triggerBody()?['url']}",
-                    "headers": {
-                      "User-Agent": "CriticalNotice-Downloader/2.0"
-                    }
-                  },
-                  "runAfter": {
-                    "Initialize_DateFolder": [
-                      "Succeeded"
-                    ]
-                  }
-                },
-                "Create_Blob_RawContent": {
-                  "type": "Http",
-                  "inputs": {
-                    "method": "PUT",
-                    "uri": "https://@{parameters('storageAccountName')}.blob.core.windows.net/critical-notices/raw/@{triggerBody()?['source']}/@{variables('dateFolder')}/@{triggerBody()?['pipeline']}/@{triggerBody()?['noticeId']}.html",
-                    "authentication": {
-                      "type": "ManagedServiceIdentity",
-                      "audience": "https://storage.azure.com/"
-                    },
-                    "headers": {
-                      "x-ms-version": "2020-10-02",
-                      "x-ms-blob-type": "BlockBlob",
-                      "Content-Type": "text/html"
-                    },
-                    "body": "@{body('HTTP_Get_NoticeDetail')}"
-                  },
-                  "runAfter": {
-                    "HTTP_Get_NoticeDetail": [
-                      "Succeeded"
-                    ]
-                  }
-                },
-                "Create_Canonical_Notice": {
-                  "type": "Http",
-                  "inputs": {
-                    "method": "PUT",
-                    "uri": "https://@{parameters('storageAccountName')}.blob.core.windows.net/critical-notices/notices/@{triggerBody()?['source']}/@{triggerBody()?['pipeline']}/@{triggerBody()?['noticeId']}.json",
-                    "authentication": {
-                      "type": "ManagedServiceIdentity",
-                      "audience": "https://storage.azure.com/"
-                    },
-                    "headers": {
-                      "x-ms-version": "2020-10-02",
-                      "x-ms-blob-type": "BlockBlob",
-                      "Content-Type": "application/json"
-                    },
-                    "body": {
-                      "source": "@{triggerBody()?['source']}",
-                      "pipeline": "@{triggerBody()?['pipeline']}",
-                      "pipelineName": "@{coalesce(triggerBody()?['pipelineName'], triggerBody()?['pipeline'])}",
-                      "noticeId": "@{triggerBody()?['noticeId']}",
-                      "title": "@{coalesce(triggerBody()?['title'], '')}",
-                      "postedDate": "@{triggerBody()?['postedDate']}",
-                      "sourceUrl": "@{triggerBody()?['url']}",
-                      "rawBlobPath": "raw/@{triggerBody()?['source']}/@{variables('dateFolder')}/@{triggerBody()?['pipeline']}/@{triggerBody()?['noticeId']}.html",
-                      "scrapedAt": "@{utcNow()}",
-                      "processingStatus": "raw_captured",
-                      "assetId": "@{coalesce(triggerBody()?['assetId'], '')}"
-                    }
-                  },
-                  "runAfter": {
-                    "Create_Blob_RawContent": [
-                      "Succeeded"
-                    ]
-                  }
-                },
-                "Append_To_Daily_Index": {
-                  "type": "Http",
-                  "inputs": {
-                    "method": "PUT",
-                    "uri": "https://@{parameters('storageAccountName')}.blob.core.windows.net/critical-notices/indices/daily/@{variables('dateFolder')}/@{triggerBody()?['source']}-@{triggerBody()?['pipeline']}-@{triggerBody()?['noticeId']}.json",
-                    "authentication": {
-                      "type": "ManagedServiceIdentity",
-                      "audience": "https://storage.azure.com/"
-                    },
-                    "headers": {
-                      "x-ms-version": "2020-10-02",
-                      "x-ms-blob-type": "BlockBlob",
-                      "Content-Type": "application/json"
-                    },
-                    "body": {
-                      "source": "@{triggerBody()?['source']}",
-                      "pipeline": "@{triggerBody()?['pipeline']}",
-                      "noticeId": "@{triggerBody()?['noticeId']}",
-                      "title": "@{coalesce(triggerBody()?['title'], '')}",
-                      "postedDate": "@{triggerBody()?['postedDate']}",
-                      "scrapedAt": "@{utcNow()}"
-                    }
-                  },
-                  "runAfter": {
-                    "Create_Canonical_Notice": [
-                      "Succeeded"
-                    ]
-                  }
-                },
-                "Response_Success": {
-                  "type": "Response",
-                  "inputs": {
-                    "statusCode": 200,
-                    "headers": {
-                      "Content-Type": "application/json"
-                    },
-                    "body": {
-                      "status": "success",
-                      "source": "@{triggerBody()?['source']}",
-                      "pipeline": "@{triggerBody()?['pipeline']}",
-                      "noticeId": "@{triggerBody()?['noticeId']}",
-                      "noticePath": "notices/@{triggerBody()?['source']}/@{triggerBody()?['pipeline']}/@{triggerBody()?['noticeId']}.json",
-                      "rawPath": "raw/@{triggerBody()?['source']}/@{variables('dateFolder')}/@{triggerBody()?['pipeline']}/@{triggerBody()?['noticeId']}.html",
-                      "scrapedAt": "@{utcNow()}"
-                    }
-                  },
-                  "runAfter": {
-                    "Append_To_Daily_Index": [
-                      "Succeeded"
-                    ]
-                  },
-                  "kind": "Http"
-                },
-                "Response_Failure": {
-                  "type": "Response",
-                  "inputs": {
-                    "statusCode": 500,
-                    "headers": {
-                      "Content-Type": "application/json"
-                    },
-                    "body": {
-                      "status": "failed",
-                      "source": "@{triggerBody()?['source']}",
-                      "pipeline": "@{triggerBody()?['pipeline']}",
-                      "noticeId": "@{triggerBody()?['noticeId']}",
-                      "error": "Failed to download or store notice"
-                    }
-                  },
-                  "runAfter": {
-                    "HTTP_Get_NoticeDetail": [
-                      "Failed"
-                    ],
-                    "Create_Blob_RawContent": [
-                      "Failed"
-                    ],
-                    "Create_Canonical_Notice": [
-                      "Failed"
-                    ]
-                  },
-                  "kind": "Http"
-                }
-              },
-              "outputs": {}
-            },
-            "$fxv#2": {
-              "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
-              "contentVersion": "2.0.0",
-              "parameters": {
-                "storageAccountName": {
-                  "type": "String"
-                },
-                "foundryEndpoint": {
-                  "type": "String"
-                },
-                "foundryApiKey": {
-                  "type": "SecureString"
-                },
-                "foundryDeploymentName": {
-                  "type": "String",
-                  "defaultValue": "gpt-4.1-mini"
-                }
-              },
-              "triggers": {
-                "Recurrence_Check_For_Raw_HTML": {
-                  "type": "Recurrence",
-                  "recurrence": {
-                    "frequency": "Minute",
-                    "interval": 5
-                  }
-                }
-              },
-              "actions": {
-                "List_Raw_HTML_Blobs": {
-                  "type": "Http",
-                  "inputs": {
-                    "method": "GET",
-                    "uri": "https://@{parameters('storageAccountName')}.blob.core.windows.net/critical-notices?restype=container&comp=list&prefix=raw/&maxresults=50",
-                    "authentication": {
-                      "type": "ManagedServiceIdentity",
-                      "audience": "https://storage.azure.com/"
-                    },
-                    "headers": {
-                      "x-ms-version": "2020-10-02"
-                    }
-                  },
-                  "runAfter": {}
-                },
-                "Parse_Blob_List_XML": {
-                  "type": "Compose",
-                  "inputs": "@xpath(xml(body('List_Raw_HTML_Blobs')), '//Blob/Name/text()')",
-                  "runAfter": {
-                    "List_Raw_HTML_Blobs": [
-                      "Succeeded"
-                    ]
-                  }
-                },
-                "Initialize_FoundrySystemPrompt": {
-                  "type": "InitializeVariable",
-                  "inputs": {
-                    "variables": [
-                      {
-                        "name": "foundrySystemPrompt",
-                        "type": "string",
-                        "value": "You are a structured data extraction assistant. Extract information from HTML documents and return only valid JSON. Be precise and thorough."
-                      }
-                    ]
-                  },
-                  "runAfter": {
-                    "Parse_Blob_List_XML": [
-                      "Succeeded"
-                    ]
-                  }
-                },
-                "Initialize_ExtractionPrompt": {
-                  "type": "InitializeVariable",
-                  "inputs": {
-                    "variables": [
-                      {
-                        "name": "extractionPrompt",
-                        "type": "string",
-                        "value": "Extract these fields from the HTML notice as JSON:\n- title: The main notice title/subject\n- noticeType: Type of notice (Maintenance, Capacity Constraint, Force Majeure, etc.)\n- status: Initiate, Supersede, or Cancel\n- postedDate: When notice was posted (ISO 8601)\n- effectiveDate: When notice takes effect (ISO 8601)\n- endDate: When notice expires (ISO 8601, null if none)\n- description: Main content/body of the notice (cleaned text, not HTML)\n- affectedLocations: List of affected locations/meters if mentioned\n- responseRequired: true if response is required, false otherwise\n\nReturn ONLY valid JSON, no markdown or explanation."
-                      }
-                    ]
-                  },
-                  "runAfter": {
-                    "Initialize_FoundrySystemPrompt": [
-                      "Succeeded"
-                    ]
-                  }
-                },
-                "For_Each_Raw_Blob": {
-                  "type": "Foreach",
-                  "foreach": "@outputs('Parse_Blob_List_XML')",
-                  "actions": {
-                    "Parse_Blob_Path": {
-                      "type": "Compose",
-                      "inputs": {
-                        "blobPath": "@{items('For_Each_Raw_Blob')}",
-                        "blobName": "@{last(split(items('For_Each_Raw_Blob'), '/'))}",
-                        "pathParts": "@split(items('For_Each_Raw_Blob'), '/')"
-                      },
-                      "runAfter": {}
-                    },
-                    "Extract_Path_Metadata": {
-                      "type": "Compose",
-                      "inputs": {
-                        "source": "@{outputs('Parse_Blob_Path')?['pathParts'][1]}",
-                        "dateFolder": "@{outputs('Parse_Blob_Path')?['pathParts'][2]}",
-                        "pipeline": "@{outputs('Parse_Blob_Path')?['pathParts'][3]}",
-                        "fileName": "@{last(outputs('Parse_Blob_Path')?['pathParts'])}",
-                        "noticeId": "@{replace(last(outputs('Parse_Blob_Path')?['pathParts']), '.html', '')}"
-                      },
-                      "runAfter": {
-                        "Parse_Blob_Path": [
-                          "Succeeded"
-                        ]
-                      }
-                    },
-                    "Check_Already_Parsed": {
-                      "type": "Http",
-                      "inputs": {
-                        "method": "HEAD",
-                        "uri": "https://@{parameters('storageAccountName')}.blob.core.windows.net/critical-notices/parsed/@{outputs('Extract_Path_Metadata')?['source']}/@{outputs('Extract_Path_Metadata')?['pipeline']}/@{outputs('Extract_Path_Metadata')?['noticeId']}.json",
-                        "authentication": {
-                          "type": "ManagedServiceIdentity",
-                          "audience": "https://storage.azure.com/"
-                        },
-                        "headers": {
-                          "x-ms-version": "2020-10-02"
-                        }
-                      },
-                      "runAfter": {
-                        "Extract_Path_Metadata": [
-                          "Succeeded"
-                        ]
-                      },
-                      "runtimeConfiguration": {
-                        "staticResult": {
-                          "name": "HTTP_HEAD_Check",
-                          "staticResultOptions": "Disabled"
-                        }
-                      }
-                    },
-                    "Process_If_Not_Parsed": {
-                      "type": "If",
-                      "expression": {
-                        "equals": [
-                          "@outputs('Check_Already_Parsed')['statusCode']",
-                          404
-                        ]
-                      },
-                      "actions": {
-                        "Get_HTML_Blob_Content": {
-                          "type": "Http",
-                          "inputs": {
-                            "method": "GET",
-                            "uri": "https://@{parameters('storageAccountName')}.blob.core.windows.net/critical-notices/@{outputs('Parse_Blob_Path')?['blobPath']}",
-                            "authentication": {
-                              "type": "ManagedServiceIdentity",
-                              "audience": "https://storage.azure.com/"
-                            },
-                            "headers": {
-                              "x-ms-version": "2020-10-02"
-                            }
-                          },
-                          "runAfter": {}
-                        },
-                        "Call_Foundry_Extraction": {
-                          "type": "Http",
-                          "inputs": {
-                            "method": "POST",
-                            "uri": "@{parameters('foundryEndpoint')}/openai/deployments/@{parameters('foundryDeploymentName')}/chat/completions?api-version=2024-02-01",
-                            "headers": {
-                              "Content-Type": "application/json",
-                              "api-key": "@parameters('foundryApiKey')"
-                            },
-                            "body": {
-                              "messages": [
-                                {
-                                  "role": "system",
-                                  "content": "@{variables('foundrySystemPrompt')}"
-                                },
-                                {
-                                  "role": "user",
-                                  "content": "@{variables('extractionPrompt')}\n\nHTML Content:\n@{body('Get_HTML_Blob_Content')}"
-                                }
-                              ],
-                              "temperature": "[json('0.1')]",
-                              "max_tokens": 2000,
-                              "response_format": {
-                                "type": "json_object"
-                              }
-                            }
-                          },
-                          "runAfter": {
-                            "Get_HTML_Blob_Content": [
-                              "Succeeded"
-                            ]
-                          }
-                        },
-                        "Parse_Foundry_Response": {
-                          "type": "ParseJson",
-                          "inputs": {
-                            "content": "@body('Call_Foundry_Extraction')",
-                            "schema": {
-                              "type": "object",
-                              "properties": {
-                                "id": {
-                                  "type": "string"
-                                },
-                                "object": {
-                                  "type": "string"
-                                },
-                                "created": {
-                                  "type": "integer"
-                                },
-                                "model": {
-                                  "type": "string"
-                                },
-                                "choices": {
-                                  "type": "array",
-                                  "items": {
-                                    "type": "object",
-                                    "properties": {
-                                      "index": {
-                                        "type": "integer"
-                                      },
-                                      "message": {
-                                        "type": "object",
-                                        "properties": {
-                                          "role": {
-                                            "type": "string"
-                                          },
-                                          "content": {
-                                            "type": "string"
-                                          }
-                                        }
-                                      },
-                                      "finish_reason": {
-                                        "type": "string"
-                                      }
-                                    }
-                                  }
-                                },
-                                "usage": {
-                                  "type": "object",
-                                  "properties": {
-                                    "prompt_tokens": {
-                                      "type": "integer"
-                                    },
-                                    "completion_tokens": {
-                                      "type": "integer"
-                                    },
-                                    "total_tokens": {
-                                      "type": "integer"
-                                    }
-                                  }
-                                }
-                              }
-                            }
-                          },
-                          "runAfter": {
-                            "Call_Foundry_Extraction": [
-                              "Succeeded"
-                            ]
-                          }
-                        },
-                        "Extract_JSON_Content": {
-                          "type": "Compose",
-                          "inputs": "@json(body('Parse_Foundry_Response')?['choices'][0]?['message']?['content'])",
-                          "runAfter": {
-                            "Parse_Foundry_Response": [
-                              "Succeeded"
-                            ]
-                          }
-                        },
-                        "Build_Final_Parsed_Document": {
-                          "type": "Compose",
-                          "inputs": {
-                            "metadata": {
-                              "source": "@{outputs('Extract_Path_Metadata')?['source']}",
-                              "pipeline": "@{outputs('Extract_Path_Metadata')?['pipeline']}",
-                              "noticeId": "@{outputs('Extract_Path_Metadata')?['noticeId']}",
-                              "rawBlobPath": "@{outputs('Parse_Blob_Path')?['blobPath']}",
-                              "parsedAt": "@{utcNow()}",
-                              "foundryModel": "@{parameters('foundryDeploymentName')}",
-                              "tokensUsed": "@{body('Parse_Foundry_Response')?['usage']?['total_tokens']}"
-                            },
-                            "extracted": "@outputs('Extract_JSON_Content')"
-                          },
-                          "runAfter": {
-                            "Extract_JSON_Content": [
-                              "Succeeded"
-                            ]
-                          }
-                        },
-                        "Write_Parsed_JSON_Blob": {
-                          "type": "Http",
-                          "inputs": {
-                            "method": "PUT",
-                            "uri": "https://@{parameters('storageAccountName')}.blob.core.windows.net/critical-notices/parsed/@{outputs('Extract_Path_Metadata')?['source']}/@{outputs('Extract_Path_Metadata')?['pipeline']}/@{outputs('Extract_Path_Metadata')?['noticeId']}.json",
-                            "authentication": {
-                              "type": "ManagedServiceIdentity",
-                              "audience": "https://storage.azure.com/"
-                            },
-                            "headers": {
-                              "x-ms-version": "2020-10-02",
-                              "x-ms-blob-type": "BlockBlob",
-                              "Content-Type": "application/json"
-                            },
-                            "body": "@outputs('Build_Final_Parsed_Document')"
-                          },
-                          "runAfter": {
-                            "Build_Final_Parsed_Document": [
-                              "Succeeded"
-                            ]
-                          }
-                        }
-                      },
-                      "else": {
-                        "actions": {}
-                      },
-                      "runAfter": {
-                        "Check_Already_Parsed": [
-                          "Succeeded",
-                          "Failed"
-                        ]
-                      }
-                    },
-                    "Handle_Parsing_Errors": {
-                      "type": "Scope",
-                      "actions": {
-                        "Log_Error_To_Failed_Folder": {
-                          "type": "Http",
-                          "inputs": {
-                            "method": "PUT",
-                            "uri": "https://@{parameters('storageAccountName')}.blob.core.windows.net/critical-notices/failed-parsing/@{outputs('Extract_Path_Metadata')?['source']}/@{outputs('Extract_Path_Metadata')?['pipeline']}/@{outputs('Extract_Path_Metadata')?['noticeId']}-@{utcNow('yyyyMMddHHmmss')}.json",
-                            "authentication": {
-                              "type": "ManagedServiceIdentity",
-                              "audience": "https://storage.azure.com/"
-                            },
-                            "headers": {
-                              "x-ms-version": "2020-10-02",
-                              "x-ms-blob-type": "BlockBlob",
-                              "Content-Type": "application/json"
-                            },
-                            "body": {
-                              "error": "Parsing failed",
-                              "timestamp": "@{utcNow()}",
-                              "source": "@{outputs('Extract_Path_Metadata')?['source']}",
-                              "pipeline": "@{outputs('Extract_Path_Metadata')?['pipeline']}",
-                              "noticeId": "@{outputs('Extract_Path_Metadata')?['noticeId']}",
-                              "rawBlobPath": "@{outputs('Parse_Blob_Path')?['blobPath']}",
-                              "errorDetails": "@{result('Process_If_Not_Parsed')}"
-                            }
-                          },
-                          "runAfter": {}
-                        }
-                      },
-                      "runAfter": {
-                        "Process_If_Not_Parsed": [
-                          "Failed",
-                          "Skipped",
-                          "TimedOut"
-                        ]
-                      }
-                    }
-                  },
-                  "runAfter": {
-                    "Initialize_ExtractionPrompt": [
-                      "Succeeded"
-                    ]
-                  },
-                  "runtimeConfiguration": {
-                    "concurrency": {
-                      "repetitions": 3
-                    }
-                  }
-                }
-              },
-              "outputs": {}
-            },
-            "scannerDefinition": "[variables('$fxv#0')]",
-            "downloaderDefinition": "[variables('$fxv#1')]",
-            "parserDefinition": "[variables('$fxv#2')]"
-          },
-          "resources": [
-            {
-              "type": "Microsoft.Logic/workflows",
-              "apiVersion": "2019-05-01",
-              "name": "[format('{0}-downloader', parameters('logicAppName'))]",
-              "location": "[parameters('location')]",
-              "tags": "[union(parameters('tags'), createObject('Workflow', 'CriticalNotice-Downloader-Multisite'))]",
-              "identity": {
-                "type": "SystemAssigned"
-              },
-              "properties": {
-                "state": "Enabled",
-                "definition": "[variables('downloaderDefinition')]",
-                "parameters": {
-                  "storageAccountName": {
-                    "value": "[parameters('storageAccountName')]"
-                  }
-                }
-              }
-            },
-            {
-              "type": "Microsoft.Logic/workflows",
-              "apiVersion": "2019-05-01",
-              "name": "[format('{0}-scanner', parameters('logicAppName'))]",
-              "location": "[parameters('location')]",
-              "tags": "[union(parameters('tags'), createObject('Workflow', 'CriticalNotice-Scanner-Multisite'))]",
-              "identity": {
-                "type": "SystemAssigned"
-              },
-              "properties": {
-                "state": "Enabled",
-                "definition": "[variables('scannerDefinition')]",
-                "parameters": {
-                  "storageAccountName": {
-                    "value": "[parameters('storageAccountName')]"
-                  },
-                  "downloaderCallbackUrl": {
-                    "value": "[listCallbackUrl(resourceId('Microsoft.Logic/workflows/triggers', format('{0}-downloader', parameters('logicAppName')), 'HTTP_Request'), '2019-05-01').value]"
-                  }
-                }
-              },
-              "dependsOn": [
-                "[resourceId('Microsoft.Logic/workflows', format('{0}-downloader', parameters('logicAppName')))]"
-              ]
-            },
-            {
-              "type": "Microsoft.Logic/workflows",
-              "apiVersion": "2019-05-01",
-              "name": "[format('{0}-parser', parameters('logicAppName'))]",
-              "location": "[parameters('location')]",
-              "tags": "[union(parameters('tags'), createObject('Workflow', 'CriticalNotice-Parser-Multisite'))]",
-              "identity": {
-                "type": "SystemAssigned"
-              },
-              "properties": {
-                "state": "Enabled",
-                "definition": "[variables('parserDefinition')]",
-                "parameters": {
-                  "storageAccountName": {
-                    "value": "[parameters('storageAccountName')]"
-                  },
-                  "foundryEndpoint": {
-                    "value": "[parameters('foundryEndpoint')]"
-                  },
-                  "foundryApiKey": {
-                    "value": "[parameters('foundryApiKey')]"
-                  },
-                  "foundryDeploymentName": {
-                    "value": "[parameters('foundryDeploymentName')]"
-                  }
-                }
-              }
-            }
-          ],
-          "outputs": {
-            "scannerLogicAppId": {
-              "type": "string",
-              "metadata": {
-                "description": "Scanner Logic App resource ID"
-              },
-              "value": "[resourceId('Microsoft.Logic/workflows', format('{0}-scanner', parameters('logicAppName')))]"
-            },
-            "scannerLogicAppName": {
-              "type": "string",
-              "metadata": {
-                "description": "Scanner Logic App name"
-              },
-              "value": "[format('{0}-scanner', parameters('logicAppName'))]"
-            },
-            "logicAppPrincipalId": {
-              "type": "string",
-              "metadata": {
-                "description": "Scanner Logic App managed identity principal ID"
-              },
-              "value": "[reference(resourceId('Microsoft.Logic/workflows', format('{0}-scanner', parameters('logicAppName'))), '2019-05-01', 'full').identity.principalId]"
-            },
-            "downloaderLogicAppId": {
-              "type": "string",
-              "metadata": {
-                "description": "Downloader Logic App resource ID"
-              },
-              "value": "[resourceId('Microsoft.Logic/workflows', format('{0}-downloader', parameters('logicAppName')))]"
-            },
-            "downloaderLogicAppName": {
-              "type": "string",
-              "metadata": {
-                "description": "Downloader Logic App name"
-              },
-              "value": "[format('{0}-downloader', parameters('logicAppName'))]"
-            },
-            "downloaderPrincipalId": {
-              "type": "string",
-              "metadata": {
-                "description": "Downloader Logic App managed identity principal ID"
-              },
-              "value": "[reference(resourceId('Microsoft.Logic/workflows', format('{0}-downloader', parameters('logicAppName'))), '2019-05-01', 'full').identity.principalId]"
-            },
-            "downloaderCallbackUrl": {
-              "type": "string",
-              "metadata": {
-                "description": "Downloader HTTP trigger callback URL"
-              },
-              "value": "[listCallbackUrl(resourceId('Microsoft.Logic/workflows/triggers', format('{0}-downloader', parameters('logicAppName')), 'HTTP_Request'), '2019-05-01').value]"
-            },
-            "logicAppName": {
-              "type": "string",
-              "metadata": {
-                "description": "Primary Logic App name (Scanner)"
-              },
-              "value": "[format('{0}-scanner', parameters('logicAppName'))]"
-            },
-            "logicAppId": {
-              "type": "string",
-              "metadata": {
-                "description": "Primary Logic App ID (Scanner)"
-              },
-              "value": "[resourceId('Microsoft.Logic/workflows', format('{0}-scanner', parameters('logicAppName')))]"
-            },
-            "parserLogicAppId": {
-              "type": "string",
-              "metadata": {
-                "description": "Parser Logic App resource ID"
-              },
-              "value": "[resourceId('Microsoft.Logic/workflows', format('{0}-parser', parameters('logicAppName')))]"
-            },
-            "parserLogicAppName": {
-              "type": "string",
-              "metadata": {
-                "description": "Parser Logic App name"
-              },
-              "value": "[format('{0}-parser', parameters('logicAppName'))]"
-            },
-            "parserPrincipalId": {
-              "type": "string",
-              "metadata": {
-                "description": "Parser Logic App managed identity principal ID"
-              },
-              "value": "[reference(resourceId('Microsoft.Logic/workflows', format('{0}-parser', parameters('logicAppName'))), '2019-05-01', 'full').identity.principalId]"
-            }
-          }
-        }
-      },
-      "dependsOn": [
-        "[resourceId('Microsoft.Resources/deployments', 'foundry-deployment')]",
-        "[resourceId('Microsoft.Resources/deployments', 'storage-deployment')]"
-      ]
     },
     {
       "type": "Microsoft.Resources/deployments",
@@ -1916,14 +769,19 @@
           "keyVaultName": {
             "value": "[parameters('keyVaultName')]"
           },
-          "logicAppPrincipalId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'logicapp-deployment'), '2025-04-01').outputs.logicAppPrincipalId.value]"
-          },
           "foundryApiKey": {
             "value": "[reference(resourceId('Microsoft.Resources/deployments', 'foundry-deployment'), '2025-04-01').outputs.foundryApiKey.value]"
           },
           "tags": {
             "value": "[parameters('tags')]"
+          },
+          "enableVnetRestrictions": {
+            "value": true
+          },
+          "allowedSubnetIds": {
+            "value": [
+              "[reference(resourceId('Microsoft.Resources/deployments', 'vnet-deployment'), '2025-04-01').outputs.logicAppsSubnetId.value]"
+            ]
           }
         },
         "template": {
@@ -1933,7 +791,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.41.2.15936",
-              "templateHash": "16731191722376375129"
+              "templateHash": "11758431147674149375"
             }
           },
           "parameters": {
@@ -1976,7 +834,33 @@
               "metadata": {
                 "description": "Microsoft Foundry API key to store as secret"
               }
+            },
+            "enableVnetRestrictions": {
+              "type": "bool",
+              "defaultValue": false,
+              "metadata": {
+                "description": "Enable VNet restrictions (deny public access)"
+              }
+            },
+            "allowedSubnetIds": {
+              "type": "array",
+              "defaultValue": [],
+              "metadata": {
+                "description": "Subnet IDs to allow access (when VNet restrictions enabled)"
+              }
             }
+          },
+          "variables": {
+            "copy": [
+              {
+                "name": "virtualNetworkRules",
+                "count": "[length(parameters('allowedSubnetIds'))]",
+                "input": {
+                  "id": "[parameters('allowedSubnetIds')[copyIndex('virtualNetworkRules')]]",
+                  "action": "Allow"
+                }
+              }
+            ]
           },
           "resources": [
             {
@@ -1997,10 +881,12 @@
                 "enableSoftDelete": true,
                 "softDeleteRetentionInDays": 90,
                 "enableRbacAuthorization": true,
-                "publicNetworkAccess": "Enabled",
+                "publicNetworkAccess": "[if(parameters('enableVnetRestrictions'), 'Disabled', 'Enabled')]",
                 "networkAcls": {
-                  "defaultAction": "Allow",
-                  "bypass": "AzureServices"
+                  "defaultAction": "[if(parameters('enableVnetRestrictions'), 'Deny', 'Allow')]",
+                  "bypass": "AzureServices",
+                  "virtualNetworkRules": "[if(parameters('enableVnetRestrictions'), variables('virtualNetworkRules'), createArray())]",
+                  "ipRules": []
                 }
               }
             },
@@ -2079,7 +965,649 @@
       },
       "dependsOn": [
         "[resourceId('Microsoft.Resources/deployments', 'foundry-deployment')]",
-        "[resourceId('Microsoft.Resources/deployments', 'logicapp-deployment')]"
+        "[resourceId('Microsoft.Resources/deployments', 'vnet-deployment')]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "private-endpoints-deployment",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "tags": {
+            "value": "[parameters('tags')]"
+          },
+          "vnetId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'vnet-deployment'), '2025-04-01').outputs.vnetId.value]"
+          },
+          "privateEndpointsSubnetId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'vnet-deployment'), '2025-04-01').outputs.privateEndpointsSubnetId.value]"
+          },
+          "storageAccountId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'storage-deployment'), '2025-04-01').outputs.storageAccountId.value]"
+          },
+          "storageAccountName": {
+            "value": "[parameters('storageAccountName')]"
+          },
+          "foundryResourceId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'foundry-deployment'), '2025-04-01').outputs.foundryResourceId.value]"
+          },
+          "foundryAccountName": {
+            "value": "[parameters('foundryAccountName')]"
+          },
+          "keyVaultId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'keyvault-deployment'), '2025-04-01').outputs.keyVaultId.value]"
+          },
+          "keyVaultName": {
+            "value": "[parameters('keyVaultName')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.41.2.15936",
+              "templateHash": "3584539862872112974"
+            }
+          },
+          "parameters": {
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Location for resources"
+              }
+            },
+            "tags": {
+              "type": "object",
+              "defaultValue": {},
+              "metadata": {
+                "description": "Tags to apply to resources"
+              }
+            },
+            "vnetId": {
+              "type": "string",
+              "metadata": {
+                "description": "VNet resource ID"
+              }
+            },
+            "privateEndpointsSubnetId": {
+              "type": "string",
+              "metadata": {
+                "description": "Private Endpoints subnet resource ID"
+              }
+            },
+            "storageAccountId": {
+              "type": "string",
+              "metadata": {
+                "description": "Storage Account resource ID"
+              }
+            },
+            "storageAccountName": {
+              "type": "string",
+              "metadata": {
+                "description": "Storage Account name (for private endpoint naming)"
+              }
+            },
+            "foundryResourceId": {
+              "type": "string",
+              "metadata": {
+                "description": "Foundry (Cognitive Services) resource ID"
+              }
+            },
+            "foundryAccountName": {
+              "type": "string",
+              "metadata": {
+                "description": "Foundry account name (for private endpoint naming)"
+              }
+            },
+            "keyVaultId": {
+              "type": "string",
+              "metadata": {
+                "description": "Key Vault resource ID"
+              }
+            },
+            "keyVaultName": {
+              "type": "string",
+              "metadata": {
+                "description": "Key Vault name (for private endpoint naming)"
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Network/privateDnsZones",
+              "apiVersion": "2020-06-01",
+              "name": "privatelink.blob.core.windows.net",
+              "location": "global",
+              "tags": "[parameters('tags')]"
+            },
+            {
+              "type": "Microsoft.Network/privateDnsZones",
+              "apiVersion": "2020-06-01",
+              "name": "privatelink.cognitiveservices.azure.com",
+              "location": "global",
+              "tags": "[parameters('tags')]"
+            },
+            {
+              "type": "Microsoft.Network/privateDnsZones",
+              "apiVersion": "2020-06-01",
+              "name": "privatelink.vaultcore.azure.net",
+              "location": "global",
+              "tags": "[parameters('tags')]"
+            },
+            {
+              "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+              "apiVersion": "2020-06-01",
+              "name": "[format('{0}/{1}', 'privatelink.blob.core.windows.net', 'link-blob-vnet')]",
+              "location": "global",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "registrationEnabled": false,
+                "virtualNetwork": {
+                  "id": "[parameters('vnetId')]"
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/privateDnsZones', 'privatelink.blob.core.windows.net')]"
+              ]
+            },
+            {
+              "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+              "apiVersion": "2020-06-01",
+              "name": "[format('{0}/{1}', 'privatelink.cognitiveservices.azure.com', 'link-cognitiveservices-vnet')]",
+              "location": "global",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "registrationEnabled": false,
+                "virtualNetwork": {
+                  "id": "[parameters('vnetId')]"
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/privateDnsZones', 'privatelink.cognitiveservices.azure.com')]"
+              ]
+            },
+            {
+              "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+              "apiVersion": "2020-06-01",
+              "name": "[format('{0}/{1}', 'privatelink.vaultcore.azure.net', 'link-keyvault-vnet')]",
+              "location": "global",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "registrationEnabled": false,
+                "virtualNetwork": {
+                  "id": "[parameters('vnetId')]"
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/privateDnsZones', 'privatelink.vaultcore.azure.net')]"
+              ]
+            },
+            {
+              "type": "Microsoft.Network/privateEndpoints",
+              "apiVersion": "2024-01-01",
+              "name": "[format('pe-{0}-blob', parameters('storageAccountName'))]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "subnet": {
+                  "id": "[parameters('privateEndpointsSubnetId')]"
+                },
+                "privateLinkServiceConnections": [
+                  {
+                    "name": "pls-storage-blob",
+                    "properties": {
+                      "privateLinkServiceId": "[parameters('storageAccountId')]",
+                      "groupIds": [
+                        "blob"
+                      ]
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "type": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups",
+              "apiVersion": "2024-01-01",
+              "name": "[format('{0}/{1}', format('pe-{0}-blob', parameters('storageAccountName')), 'default')]",
+              "properties": {
+                "privateDnsZoneConfigs": [
+                  {
+                    "name": "privatelink-blob-core-windows-net",
+                    "properties": {
+                      "privateDnsZoneId": "[resourceId('Microsoft.Network/privateDnsZones', 'privatelink.blob.core.windows.net')]"
+                    }
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/privateEndpoints', format('pe-{0}-blob', parameters('storageAccountName')))]",
+                "[resourceId('Microsoft.Network/privateDnsZones', 'privatelink.blob.core.windows.net')]"
+              ]
+            },
+            {
+              "type": "Microsoft.Network/privateEndpoints",
+              "apiVersion": "2024-01-01",
+              "name": "[format('pe-{0}-account', parameters('foundryAccountName'))]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "subnet": {
+                  "id": "[parameters('privateEndpointsSubnetId')]"
+                },
+                "privateLinkServiceConnections": [
+                  {
+                    "name": "pls-foundry-account",
+                    "properties": {
+                      "privateLinkServiceId": "[parameters('foundryResourceId')]",
+                      "groupIds": [
+                        "account"
+                      ]
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "type": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups",
+              "apiVersion": "2024-01-01",
+              "name": "[format('{0}/{1}', format('pe-{0}-account', parameters('foundryAccountName')), 'default')]",
+              "properties": {
+                "privateDnsZoneConfigs": [
+                  {
+                    "name": "privatelink-cognitiveservices-azure-com",
+                    "properties": {
+                      "privateDnsZoneId": "[resourceId('Microsoft.Network/privateDnsZones', 'privatelink.cognitiveservices.azure.com')]"
+                    }
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/privateEndpoints', format('pe-{0}-account', parameters('foundryAccountName')))]",
+                "[resourceId('Microsoft.Network/privateDnsZones', 'privatelink.cognitiveservices.azure.com')]"
+              ]
+            },
+            {
+              "type": "Microsoft.Network/privateEndpoints",
+              "apiVersion": "2024-01-01",
+              "name": "[format('pe-{0}-vault', parameters('keyVaultName'))]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "subnet": {
+                  "id": "[parameters('privateEndpointsSubnetId')]"
+                },
+                "privateLinkServiceConnections": [
+                  {
+                    "name": "pls-keyvault-vault",
+                    "properties": {
+                      "privateLinkServiceId": "[parameters('keyVaultId')]",
+                      "groupIds": [
+                        "vault"
+                      ]
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "type": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups",
+              "apiVersion": "2024-01-01",
+              "name": "[format('{0}/{1}', format('pe-{0}-vault', parameters('keyVaultName')), 'default')]",
+              "properties": {
+                "privateDnsZoneConfigs": [
+                  {
+                    "name": "privatelink-vaultcore-azure-net",
+                    "properties": {
+                      "privateDnsZoneId": "[resourceId('Microsoft.Network/privateDnsZones', 'privatelink.vaultcore.azure.net')]"
+                    }
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/privateEndpoints', format('pe-{0}-vault', parameters('keyVaultName')))]",
+                "[resourceId('Microsoft.Network/privateDnsZones', 'privatelink.vaultcore.azure.net')]"
+              ]
+            }
+          ],
+          "outputs": {
+            "storageBlobPrivateEndpointId": {
+              "type": "string",
+              "metadata": {
+                "description": "Storage blob private endpoint ID"
+              },
+              "value": "[resourceId('Microsoft.Network/privateEndpoints', format('pe-{0}-blob', parameters('storageAccountName')))]"
+            },
+            "foundryPrivateEndpointId": {
+              "type": "string",
+              "metadata": {
+                "description": "Foundry private endpoint ID"
+              },
+              "value": "[resourceId('Microsoft.Network/privateEndpoints', format('pe-{0}-account', parameters('foundryAccountName')))]"
+            },
+            "keyVaultPrivateEndpointId": {
+              "type": "string",
+              "metadata": {
+                "description": "Key Vault private endpoint ID"
+              },
+              "value": "[resourceId('Microsoft.Network/privateEndpoints', format('pe-{0}-vault', parameters('keyVaultName')))]"
+            },
+            "blobDnsZoneId": {
+              "type": "string",
+              "metadata": {
+                "description": "Blob private DNS zone ID"
+              },
+              "value": "[resourceId('Microsoft.Network/privateDnsZones', 'privatelink.blob.core.windows.net')]"
+            },
+            "cognitiveServicesDnsZoneId": {
+              "type": "string",
+              "metadata": {
+                "description": "Cognitive Services private DNS zone ID"
+              },
+              "value": "[resourceId('Microsoft.Network/privateDnsZones', 'privatelink.cognitiveservices.azure.com')]"
+            },
+            "keyVaultDnsZoneId": {
+              "type": "string",
+              "metadata": {
+                "description": "Key Vault private DNS zone ID"
+              },
+              "value": "[resourceId('Microsoft.Network/privateDnsZones', 'privatelink.vaultcore.azure.net')]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', 'foundry-deployment')]",
+        "[resourceId('Microsoft.Resources/deployments', 'keyvault-deployment')]",
+        "[resourceId('Microsoft.Resources/deployments', 'storage-deployment')]",
+        "[resourceId('Microsoft.Resources/deployments', 'vnet-deployment')]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "logicapp-standard-deployment",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "logicAppName": {
+            "value": "[parameters('logicAppName')]"
+          },
+          "appServicePlanName": {
+            "value": "[parameters('appServicePlanName')]"
+          },
+          "storageAccountName": {
+            "value": "[parameters('storageAccountName')]"
+          },
+          "storageConnectionString": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'storage-deployment'), '2025-04-01').outputs.storageConnectionString.value]"
+          },
+          "foundryEndpoint": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'foundry-deployment'), '2025-04-01').outputs.foundryEndpoint.value]"
+          },
+          "foundryDeploymentName": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'foundry-deployment'), '2025-04-01').outputs.deploymentName.value]"
+          },
+          "vnetIntegrationSubnetId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'vnet-deployment'), '2025-04-01').outputs.logicAppsSubnetId.value]"
+          },
+          "keyVaultUri": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'keyvault-deployment'), '2025-04-01').outputs.keyVaultUri.value]"
+          },
+          "tags": {
+            "value": "[parameters('tags')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.41.2.15936",
+              "templateHash": "16461781969478428105"
+            }
+          },
+          "parameters": {
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Location for resources"
+              }
+            },
+            "logicAppName": {
+              "type": "string",
+              "defaultValue": "logic-dte-noticeapp-eus2-mx01",
+              "metadata": {
+                "description": "Logic App Standard name"
+              }
+            },
+            "appServicePlanName": {
+              "type": "string",
+              "defaultValue": "asp-dte-noticeapp-eus2-mx01",
+              "metadata": {
+                "description": "App Service Plan name"
+              }
+            },
+            "tags": {
+              "type": "object",
+              "defaultValue": {},
+              "metadata": {
+                "description": "Tags to apply to resources"
+              }
+            },
+            "storageAccountName": {
+              "type": "string",
+              "metadata": {
+                "description": "Storage account name for Logic App internal state and business data"
+              }
+            },
+            "storageConnectionString": {
+              "type": "securestring",
+              "metadata": {
+                "description": "Storage account connection string for AzureWebJobsStorage"
+              }
+            },
+            "foundryEndpoint": {
+              "type": "string",
+              "metadata": {
+                "description": "Microsoft Foundry endpoint URL"
+              }
+            },
+            "foundryDeploymentName": {
+              "type": "string",
+              "metadata": {
+                "description": "Microsoft Foundry deployment name"
+              }
+            },
+            "vnetIntegrationSubnetId": {
+              "type": "string",
+              "metadata": {
+                "description": "VNet integration subnet ID"
+              }
+            },
+            "keyVaultUri": {
+              "type": "string",
+              "metadata": {
+                "description": "Key Vault URI for secrets reference"
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Web/serverfarms",
+              "apiVersion": "2023-12-01",
+              "name": "[parameters('appServicePlanName')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "kind": "elastic",
+              "sku": {
+                "name": "WS1",
+                "tier": "WorkflowStandard"
+              },
+              "properties": {
+                "maximumElasticWorkerCount": 20,
+                "reserved": false
+              }
+            },
+            {
+              "type": "Microsoft.Web/sites",
+              "apiVersion": "2023-12-01",
+              "name": "[parameters('logicAppName')]",
+              "location": "[parameters('location')]",
+              "tags": "[union(parameters('tags'), createObject('Service', 'CriticalNotice-Workflows'))]",
+              "kind": "workflowapp,functionapp",
+              "identity": {
+                "type": "SystemAssigned"
+              },
+              "properties": {
+                "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', parameters('appServicePlanName'))]",
+                "httpsOnly": true,
+                "virtualNetworkSubnetId": "[parameters('vnetIntegrationSubnetId')]",
+                "vnetRouteAllEnabled": true,
+                "siteConfig": {
+                  "netFrameworkVersion": "v6.0",
+                  "ftpsState": "Disabled",
+                  "use32BitWorkerProcess": false,
+                  "cors": {
+                    "allowedOrigins": []
+                  },
+                  "appSettings": [
+                    {
+                      "name": "FUNCTIONS_EXTENSION_VERSION",
+                      "value": "~4"
+                    },
+                    {
+                      "name": "FUNCTIONS_WORKER_RUNTIME",
+                      "value": "node"
+                    },
+                    {
+                      "name": "WEBSITE_NODE_DEFAULT_VERSION",
+                      "value": "~18"
+                    },
+                    {
+                      "name": "AzureWebJobsStorage",
+                      "value": "[parameters('storageConnectionString')]"
+                    },
+                    {
+                      "name": "WEBSITE_CONTENTAZUREFILECONNECTIONSTRING",
+                      "value": "[parameters('storageConnectionString')]"
+                    },
+                    {
+                      "name": "WEBSITE_CONTENTSHARE",
+                      "value": "[toLower(parameters('logicAppName'))]"
+                    },
+                    {
+                      "name": "AzureFunctionsJobHost__extensionBundle__id",
+                      "value": "Microsoft.Azure.Functions.ExtensionBundle.Workflows"
+                    },
+                    {
+                      "name": "AzureFunctionsJobHost__extensionBundle__version",
+                      "value": "[1.*, 2.0.0)"
+                    },
+                    {
+                      "name": "APP_KIND",
+                      "value": "workflowapp"
+                    },
+                    {
+                      "name": "StorageAccountName",
+                      "value": "[parameters('storageAccountName')]"
+                    },
+                    {
+                      "name": "FoundryEndpoint",
+                      "value": "[parameters('foundryEndpoint')]"
+                    },
+                    {
+                      "name": "FoundryDeploymentName",
+                      "value": "[parameters('foundryDeploymentName')]"
+                    },
+                    {
+                      "name": "KeyVaultUri",
+                      "value": "[parameters('keyVaultUri')]"
+                    },
+                    {
+                      "name": "WEBSITE_VNET_ROUTE_ALL",
+                      "value": "1"
+                    },
+                    {
+                      "name": "WEBSITE_CONTENTOVERVNET",
+                      "value": "1"
+                    }
+                  ]
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Web/serverfarms', parameters('appServicePlanName'))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "logicAppId": {
+              "type": "string",
+              "metadata": {
+                "description": "Logic App Standard resource ID"
+              },
+              "value": "[resourceId('Microsoft.Web/sites', parameters('logicAppName'))]"
+            },
+            "logicAppName": {
+              "type": "string",
+              "metadata": {
+                "description": "Logic App Standard name"
+              },
+              "value": "[parameters('logicAppName')]"
+            },
+            "logicAppPrincipalId": {
+              "type": "string",
+              "metadata": {
+                "description": "Logic App Standard managed identity principal ID"
+              },
+              "value": "[reference(resourceId('Microsoft.Web/sites', parameters('logicAppName')), '2023-12-01', 'full').identity.principalId]"
+            },
+            "logicAppHostname": {
+              "type": "string",
+              "metadata": {
+                "description": "Logic App Standard default hostname"
+              },
+              "value": "[reference(resourceId('Microsoft.Web/sites', parameters('logicAppName')), '2023-12-01').defaultHostName]"
+            },
+            "appServicePlanId": {
+              "type": "string",
+              "metadata": {
+                "description": "App Service Plan ID"
+              },
+              "value": "[resourceId('Microsoft.Web/serverfarms', parameters('appServicePlanName'))]"
+            },
+            "appServicePlanName": {
+              "type": "string",
+              "metadata": {
+                "description": "App Service Plan name"
+              },
+              "value": "[parameters('appServicePlanName')]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', 'foundry-deployment')]",
+        "[resourceId('Microsoft.Resources/deployments', 'keyvault-deployment')]",
+        "[resourceId('Microsoft.Resources/deployments', 'private-endpoints-deployment')]",
+        "[resourceId('Microsoft.Resources/deployments', 'storage-deployment')]",
+        "[resourceId('Microsoft.Resources/deployments', 'vnet-deployment')]"
       ]
     },
     {
@@ -2496,6 +2024,20 @@
     }
   ],
   "outputs": {
+    "vnetName": {
+      "type": "string",
+      "metadata": {
+        "description": "VNet name"
+      },
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'vnet-deployment'), '2025-04-01').outputs.vnetName.value]"
+    },
+    "vnetId": {
+      "type": "string",
+      "metadata": {
+        "description": "VNet ID"
+      },
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'vnet-deployment'), '2025-04-01').outputs.vnetId.value]"
+    },
     "storageAccountName": {
       "type": "string",
       "metadata": {
@@ -2524,40 +2066,33 @@
       },
       "value": "[reference(resourceId('Microsoft.Resources/deployments', 'keyvault-deployment'), '2025-04-01').outputs.keyVaultUri.value]"
     },
-    "logicAppScannerName": {
+    "logicAppStandardName": {
       "type": "string",
       "metadata": {
-        "description": "Logic App Scanner name"
+        "description": "Logic App Standard name"
       },
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'logicapp-deployment'), '2025-04-01').outputs.scannerLogicAppName.value]"
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'logicapp-standard-deployment'), '2025-04-01').outputs.logicAppName.value]"
     },
-    "logicAppDownloaderName": {
+    "logicAppStandardHostname": {
       "type": "string",
       "metadata": {
-        "description": "Logic App Downloader name"
+        "description": "Logic App Standard hostname"
       },
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'logicapp-deployment'), '2025-04-01').outputs.downloaderLogicAppName.value]"
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'logicapp-standard-deployment'), '2025-04-01').outputs.logicAppHostname.value]"
     },
     "logicAppPrincipalId": {
       "type": "string",
       "metadata": {
-        "description": "Logic App Scanner managed identity principal ID"
+        "description": "Logic App Standard managed identity principal ID"
       },
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'logicapp-deployment'), '2025-04-01').outputs.logicAppPrincipalId.value]"
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'logicapp-standard-deployment'), '2025-04-01').outputs.logicAppPrincipalId.value]"
     },
-    "downloaderPrincipalId": {
+    "appServicePlanName": {
       "type": "string",
       "metadata": {
-        "description": "Logic App Downloader managed identity principal ID"
+        "description": "App Service Plan name"
       },
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'logicapp-deployment'), '2025-04-01').outputs.downloaderPrincipalId.value]"
-    },
-    "downloaderCallbackUrl": {
-      "type": "string",
-      "metadata": {
-        "description": "Downloader callback URL (for testing)"
-      },
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'logicapp-deployment'), '2025-04-01').outputs.downloaderCallbackUrl.value]"
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'logicapp-standard-deployment'), '2025-04-01').outputs.appServicePlanName.value]"
     },
     "dataFactoryName": {
       "type": "string",
@@ -2586,13 +2121,6 @@
         "description": "Foundry deployment name"
       },
       "value": "[reference(resourceId('Microsoft.Resources/deployments', 'foundry-deployment'), '2025-04-01').outputs.deploymentName.value]"
-    },
-    "logicAppParserName": {
-      "type": "string",
-      "metadata": {
-        "description": "Logic App Parser name"
-      },
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'logicapp-deployment'), '2025-04-01').outputs.parserLogicAppName.value]"
     }
   }
 }

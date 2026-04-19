@@ -1,5 +1,6 @@
 // Storage Account with blob containers and lifecycle policy
 // For multi-site critical notice ingestion pipeline (Enbridge + TCeConnects)
+// Supports VNet isolation with service endpoints
 
 @description('Location for the storage account')
 param location string
@@ -9,6 +10,18 @@ param storageAccountName string
 
 @description('Tags to apply to resources')
 param tags object = {}
+
+@description('Enable VNet restrictions (deny public access)')
+param enableVnetRestrictions bool = false
+
+@description('Subnet IDs to allow access (when VNet restrictions enabled)')
+param allowedSubnetIds array = []
+
+// Build virtual network rules from allowed subnet IDs
+var virtualNetworkRules = [for subnetId in allowedSubnetIds: {
+  id: subnetId
+  action: 'Allow'
+}]
 
 // Storage Account - Hot tier for frequent polling access
 resource storageAccount 'Microsoft.Storage/storageAccounts@2023-01-01' = {
@@ -24,10 +37,12 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2023-01-01' = {
     supportsHttpsTrafficOnly: true
     minimumTlsVersion: 'TLS1_2'
     allowBlobPublicAccess: false
-    allowSharedKeyAccess: false
+    allowSharedKeyAccess: true // Required for Logic Apps Standard AzureWebJobsStorage
     networkAcls: {
-      defaultAction: 'Allow'
+      defaultAction: enableVnetRestrictions ? 'Deny' : 'Allow'
       bypass: 'AzureServices'
+      virtualNetworkRules: enableVnetRestrictions ? virtualNetworkRules : []
+      ipRules: []
     }
   }
 }
@@ -106,3 +121,7 @@ output storageAccountName string = storageAccount.name
 
 @description('Storage account blob endpoint')
 output blobEndpoint string = storageAccount.properties.primaryEndpoints.blob
+
+@description('Storage account connection string (for Logic Apps Standard)')
+#disable-next-line outputs-should-not-contain-secrets
+output storageConnectionString string = 'DefaultEndpointsProtocol=https;AccountName=${storageAccount.name};AccountKey=${storageAccount.listKeys().keys[0].value};EndpointSuffix=core.windows.net'

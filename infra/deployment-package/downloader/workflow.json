@@ -1,0 +1,218 @@
+{
+  "definition": {
+    "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+    "contentVersion": "2.0.0",
+    "parameters": {},
+    "triggers": {
+      "HTTP_Request": {
+        "type": "Request",
+        "kind": "Http",
+        "inputs": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "source": {
+                "type": "string",
+                "description": "Source site: enbridge | tceconnects"
+              },
+              "pipeline": {
+                "type": "string",
+                "description": "Pipeline/business unit code"
+              },
+              "pipelineName": {
+                "type": "string",
+                "description": "Full pipeline name (optional)"
+              },
+              "noticeId": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string",
+                "description": "Notice title (from JSON list)"
+              },
+              "url": {
+                "type": "string"
+              },
+              "postedDate": {
+                "type": "string"
+              },
+              "assetId": {
+                "type": "string",
+                "description": "TCeConnects asset ID (optional)"
+              }
+            },
+            "required": ["source", "pipeline", "noticeId", "url"]
+          }
+        }
+      }
+    },
+    "actions": {
+      "Initialize_DateFolder": {
+        "type": "InitializeVariable",
+        "inputs": {
+          "variables": [
+            {
+              "name": "dateFolder",
+              "type": "string",
+              "value": "@{formatDateTime(utcNow(), 'yyyy-MM-dd')}"
+            }
+          ]
+        },
+        "runAfter": {}
+      },
+      "Initialize_StorageAccountName": {
+        "type": "InitializeVariable",
+        "inputs": {
+          "variables": [
+            {
+              "name": "storageAccountName",
+              "type": "string",
+              "value": "@appsetting('StorageAccountName')"
+            }
+          ]
+        },
+        "runAfter": {
+          "Initialize_DateFolder": ["Succeeded"]
+        }
+      },
+      "HTTP_Get_NoticeDetail": {
+        "type": "Http",
+        "inputs": {
+          "method": "GET",
+          "uri": "@{triggerBody()?['url']}",
+          "headers": {
+            "User-Agent": "CriticalNotice-Downloader/2.0"
+          }
+        },
+        "runAfter": {
+          "Initialize_StorageAccountName": ["Succeeded"]
+        }
+      },
+      "Create_Blob_RawContent": {
+        "type": "Http",
+        "inputs": {
+          "method": "PUT",
+          "uri": "https://@{variables('storageAccountName')}.blob.core.windows.net/critical-notices/raw/@{triggerBody()?['source']}/@{variables('dateFolder')}/@{triggerBody()?['pipeline']}/@{triggerBody()?['noticeId']}.html",
+          "authentication": {
+            "type": "ManagedServiceIdentity",
+            "audience": "https://storage.azure.com/"
+          },
+          "headers": {
+            "x-ms-version": "2020-10-02",
+            "x-ms-blob-type": "BlockBlob",
+            "Content-Type": "text/html"
+          },
+          "body": "@{body('HTTP_Get_NoticeDetail')}"
+        },
+        "runAfter": {
+          "HTTP_Get_NoticeDetail": ["Succeeded"]
+        }
+      },
+      "Create_Canonical_Notice": {
+        "type": "Http",
+        "inputs": {
+          "method": "PUT",
+          "uri": "https://@{variables('storageAccountName')}.blob.core.windows.net/critical-notices/notices/@{triggerBody()?['source']}/@{triggerBody()?['pipeline']}/@{triggerBody()?['noticeId']}.json",
+          "authentication": {
+            "type": "ManagedServiceIdentity",
+            "audience": "https://storage.azure.com/"
+          },
+          "headers": {
+            "x-ms-version": "2020-10-02",
+            "x-ms-blob-type": "BlockBlob",
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "source": "@{triggerBody()?['source']}",
+            "pipeline": "@{triggerBody()?['pipeline']}",
+            "pipelineName": "@{coalesce(triggerBody()?['pipelineName'], triggerBody()?['pipeline'])}",
+            "noticeId": "@{triggerBody()?['noticeId']}",
+            "title": "@{coalesce(triggerBody()?['title'], '')}",
+            "postedDate": "@{triggerBody()?['postedDate']}",
+            "sourceUrl": "@{triggerBody()?['url']}",
+            "rawBlobPath": "raw/@{triggerBody()?['source']}/@{variables('dateFolder')}/@{triggerBody()?['pipeline']}/@{triggerBody()?['noticeId']}.html",
+            "scrapedAt": "@{utcNow()}",
+            "processingStatus": "raw_captured",
+            "assetId": "@{coalesce(triggerBody()?['assetId'], '')}"
+          }
+        },
+        "runAfter": {
+          "Create_Blob_RawContent": ["Succeeded"]
+        }
+      },
+      "Append_To_Daily_Index": {
+        "type": "Http",
+        "inputs": {
+          "method": "PUT",
+          "uri": "https://@{variables('storageAccountName')}.blob.core.windows.net/critical-notices/indices/daily/@{variables('dateFolder')}/@{triggerBody()?['source']}-@{triggerBody()?['pipeline']}-@{triggerBody()?['noticeId']}.json",
+          "authentication": {
+            "type": "ManagedServiceIdentity",
+            "audience": "https://storage.azure.com/"
+          },
+          "headers": {
+            "x-ms-version": "2020-10-02",
+            "x-ms-blob-type": "BlockBlob",
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "source": "@{triggerBody()?['source']}",
+            "pipeline": "@{triggerBody()?['pipeline']}",
+            "noticeId": "@{triggerBody()?['noticeId']}",
+            "title": "@{coalesce(triggerBody()?['title'], '')}",
+            "postedDate": "@{triggerBody()?['postedDate']}",
+            "scrapedAt": "@{utcNow()}"
+          }
+        },
+        "runAfter": {
+          "Create_Canonical_Notice": ["Succeeded"]
+        }
+      },
+      "Response_Success": {
+        "type": "Response",
+        "inputs": {
+          "statusCode": 200,
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "status": "success",
+            "source": "@{triggerBody()?['source']}",
+            "pipeline": "@{triggerBody()?['pipeline']}",
+            "noticeId": "@{triggerBody()?['noticeId']}",
+            "noticePath": "notices/@{triggerBody()?['source']}/@{triggerBody()?['pipeline']}/@{triggerBody()?['noticeId']}.json",
+            "rawPath": "raw/@{triggerBody()?['source']}/@{variables('dateFolder')}/@{triggerBody()?['pipeline']}/@{triggerBody()?['noticeId']}.html",
+            "scrapedAt": "@{utcNow()}"
+          }
+        },
+        "runAfter": {
+          "Append_To_Daily_Index": ["Succeeded"]
+        },
+        "kind": "Http"
+      },
+      "Response_Failure": {
+        "type": "Response",
+        "inputs": {
+          "statusCode": 500,
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "status": "failed",
+            "source": "@{triggerBody()?['source']}",
+            "pipeline": "@{triggerBody()?['pipeline']}",
+            "noticeId": "@{triggerBody()?['noticeId']}",
+            "error": "Failed to download or store notice"
+          }
+        },
+        "runAfter": {
+          "HTTP_Get_NoticeDetail": ["Failed"],
+          "Create_Blob_RawContent": ["Failed"],
+          "Create_Canonical_Notice": ["Failed"]
+        },
+        "kind": "Http"
+      }
+    },
+    "outputs": {}
+  },
+  "kind": "Stateful"
+}
