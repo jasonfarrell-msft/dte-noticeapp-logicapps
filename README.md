@@ -4,9 +4,10 @@ A low-code/no-code Azure solution that extracts critical notices from natural ga
 
 ## Overview
 
-This system monitors **30 pipeline operator business units** across two major sources:
-- **Enbridge Infopost** (25 units) — HTML scraping
-- **TC Energy Connects** (5 units) — JSON API
+This system monitors pipeline operator critical notices across multiple sources. Sites are declared in a small registry; their business units are **auto-discovered** at scan time from each site's landing-page dropdown. Today it covers:
+
+- **Enbridge Infopost** (~25 business units) — HTML scraping
+- **TC Energy Connects** (~12 business units) — JSON API
 
 Critical notices are polled every 15 minutes, deduplicated, and stored in Azure Blob Storage with a unified schema ready for Microsoft Fabric ingestion.
 
@@ -17,17 +18,17 @@ Critical notices are polled every 15 minutes, deduplicated, and stored in Azure 
 │                              AZURE LOGIC APPS                                │
 │                                                                              │
 │   ┌───────────────────┐    ┌──────────────────────────────────────────────┐  │
-│   │  Recurrence       │───▶│  scanner-multisite                           │  │
+│   │  Recurrence       │───▶│  scanner-multisite (registry-driven, v4)     │  │
 │   │  (Every 15 min)   │    │                                              │  │
-│   └───────────────────┘    │  ┌────────────────┐   ┌────────────────┐     │  │
-│                            │  │ Enbridge       │   │ TCeConnects    │     │  │
-│                            │  │ (25 units)     │   │ (5 units)      │     │  │
-│                            │  │ HTML scraping  │   │ JSON API       │     │  │
-│                            │  └───────┬────────┘   └───────┬────────┘     │  │
-│                            └──────────┼────────────────────┼──────────────┘  │
-│                                       │                    │                 │
-│                            ┌──────────▼────────────────────▼──────────────┐  │
-│                            │  downloader-multisite                        │  │
+│   └───────────────────┘    │  1. Read site registry from blob             │  │
+│                            │  2. Per site: GET rootUrl                    │  │
+│                            │  3. Discover BUs (inline JS)                 │  │
+│                            │  4. Switch on parserModel:                   │  │
+│                            │       html-table-v1 │ json-grid-v1          │  │
+│                            └──────────────────────┬───────────────────────┘  │
+│                                                   │                          │
+│                            ┌──────────────────────▼───────────────────────┐  │
+│                            │  downloader-multisite (source-agnostic)      │  │
 │                            │  • Downloads raw HTML                        │  │
 │                            │  • Creates canonical JSON metadata           │  │
 │                            │  • Deduplicates via HEAD check               │  │
@@ -65,9 +66,12 @@ critical-notices/
 ├── raw/                         # Raw HTML content
 │   ├── enbridge/{date}/{pipeline}/
 │   └── tceconnects/{date}/{pipeline}/
-├── tracking/                    # Change detection state
+├── tracking/                    # Per-pipeline state + scan-summary.json
+├── discovery/                   # Cached BU lists per site (fallback if live discovery fails)
+│   ├── enbridge.json
+│   └── tceconnects.json
 ├── indices/daily/               # Daily indexes for reporting
-└── config/sites.json            # Multi-site configuration
+└── config/sites.json            # Site registry (read by scanner each run)
 ```
 
 ## Infrastructure
@@ -122,20 +126,40 @@ az deployment group what-if \
 
 ## Configuration
 
-The multi-site configuration lives in [`infra/config/sites.json`](infra/config/sites.json):
+The site registry lives in [`infra/config/sites.json`](infra/config/sites.json) and is uploaded to blob storage; the scanner reads it at runtime. Each site declares only what it needs to be discovered and dispatched — **no hand-maintained business-unit lists**:
 
-```json
+```jsonc
 {
-  "sites": {
-    "enbridge": {
-      "type": "html-scraper",
-      "businessUnits": [/* 25 units */]
+  "version": "3.0.0",
+  "sites": [
+    {
+      "id": "enbridge",
+      "enabled": true,
+      "parserModel": "html-table-v1",
+      "discovery": {
+        "rootUrl": "https://infopost.enbridge.com/infopost/",
+        "dropdownLabel": "Select Business Unit"
+      },
+      "config": {
+        "listUrlPattern":   "https://infopost.enbridge.com/infopost/{code}NoticesList.asp?strKey1=",
+        "detailUrlPattern": "https://infopost.enbridge.com/infopost/{code}NoticesDetail.asp?strKey1={noticeId}",
+        "noticeIdToken":    "strKey1"
+      }
     },
-    "tceconnects": {
-      "type": "json-api",
-      "businessUnits": [/* 5 units */]
+    {
+      "id": "tceconnects",
+      "enabled": true,
+      "parserModel": "json-grid-v1",
+      "discovery": {
+        "rootUrl": "https://www.tceconnects.com/",
+        "dropdownLabel": "Pipeline"
+      },
+      "config": {
+        "listUrlPattern":   "https://www.tceconnects.com/Notices/GetNotices?assetId={assetId}&...",
+        "detailUrlPattern": "https://www.tceconnects.com/Notices/Detail?assetId={assetId}&noticeId={noticeId}"
+      }
     }
-  }
+  ]
 }
 ```
 
@@ -241,11 +265,11 @@ az storage blob upload \
 
 - [x] Site analysis and API discovery
 - [x] Unified storage schema design
-- [x] Multi-site scanner workflow (registry-driven, parserModel dispatch)
+- [x] Multi-site scanner workflow (registry-driven, parserModel dispatch, auto-discovery)
 - [x] Multi-site downloader workflow
 - [x] VNet-isolated infrastructure (Bicep)
 - [x] Azure AI Foundry integration
-- [ ] Full deployment and testing
+- [x] Initial deployment + smoke test (Enbridge 25 BUs, TCE 12 unique BUs verified)
 - [ ] Fabric Lakehouse connection
 - [ ] AI-powered HTML parsing (Phase 3)
 
