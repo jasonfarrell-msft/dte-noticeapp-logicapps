@@ -60,19 +60,54 @@ If discovery fails or returns suspiciously few entries (< 50% of last good run),
 
 ```
 critical-notices/
-├── notices/                     # Canonical notice metadata (JSON)
+├── notices/                     # Canonical notice metadata (JSON) — written by downloader
 │   ├── enbridge/{pipeline}/
 │   └── tceconnects/{pipeline}/
-├── raw/                         # Raw HTML content
+├── raw/                         # Raw HTML/JSON payload as captured from the source — written by downloader
 │   ├── enbridge/{date}/{pipeline}/
 │   └── tceconnects/{date}/{pipeline}/
-├── tracking/                    # Per-pipeline state + scan-summary.json
+├── parsed/                      # AI-extracted structured JSON — written by parser, consumed by ADF → Fabric
+│   ├── enbridge/{pipeline}/{noticeId}.json
+│   └── tceconnects/{pipeline}/{noticeId}.json
+├── failed-parsing/              # Quarantine for parser failures (one file per attempt, timestamped)
+│   ├── enbridge/{pipeline}/
+│   └── tceconnects/{pipeline}/
+├── tracking/                    # Per-pipeline state + scan-summary.json (scanner + downloader heartbeat)
 ├── discovery/                   # Cached BU lists per site (fallback if live discovery fails)
 │   ├── enbridge.json
 │   └── tceconnects.json
 ├── indices/daily/               # Daily indexes for reporting
 └── config/sites.json            # Site registry (read by scanner each run)
 ```
+
+Each `parsed/{source}/{pipeline}/{noticeId}.json` document contains:
+
+```jsonc
+{
+  "metadata": {
+    "source":        "enbridge | tceconnects",
+    "pipeline":      "AG | ANR | ...",
+    "noticeId":      "172843",
+    "rawBlobPath":   "raw/enbridge/2026-04-18/AG/172843.html",
+    "parsedAt":      "2026-04-20T18:33:12Z",
+    "foundryModel":  "gpt-5.2",
+    "tokensUsed":    5313
+  },
+  "extracted": {
+    "title":              "...",
+    "noticeType":         "Maintenance | Capacity Constraint | Operational Alert | Force Majeure | Other",
+    "status":             "Initiate | Supersede | Cancel",
+    "postedDate":         "ISO 8601",
+    "effectiveDate":      "ISO 8601",
+    "endDate":            "ISO 8601 | null",
+    "description":        "Cleaned plain-text body",
+    "affectedLocations":  ["..."],
+    "responseRequired":   true
+  }
+}
+```
+
+The `parsed/` folder is the **handoff point to Microsoft Fabric** — the ADF `IngestToFabric` pipeline copies new files from this prefix into the Lakehouse. The parser is idempotent: a HEAD check against `parsed/{source}/{pipeline}/{noticeId}.json` causes already-processed raws to be skipped on subsequent runs.
 
 ## Infrastructure
 
