@@ -1,8 +1,11 @@
 // Inline JS code executed by the Logic App's "Execute JavaScript Code" action.
 // This file is read at build time by _build_scanner.js and embedded into the workflow JSON.
-var html = workflowContext.actions['Get_RootHtml'].outputs.body;
-var cacheStatus = workflowContext.actions['Read_Discovery_Cache'].outputs.statusCode;
-var cacheBody = (cacheStatus === 200) ? workflowContext.actions['Read_Discovery_Cache'].outputs.body : null;
+var rootAct  = workflowContext.actions['Get_RootHtml'];
+var rootOk   = rootAct && rootAct.status === 'Succeeded' && rootAct.outputs && typeof rootAct.outputs.body === 'string';
+var html     = rootOk ? rootAct.outputs.body : '';
+var cacheAct = workflowContext.actions['Read_Discovery_Cache'];
+var cacheStatus = (cacheAct && cacheAct.outputs) ? cacheAct.outputs.statusCode : 0;
+var cacheBody = (cacheStatus === 200 && cacheAct.outputs) ? cacheAct.outputs.body : null;
 var inputs = workflowContext.actions['Compose_Discovery_Inputs'].outputs;
 var label = inputs.dropdownLabel;
 var model = inputs.parserModel;
@@ -55,10 +58,12 @@ function extractJsonGridV1(ulInner) {
   return items;
 }
 
-var ulInner = findUlAfterLabel(html, label);
+var ulInner = html ? findUlAfterLabel(html, label) : null;
 var discovered = [];
 var discoveryError = null;
-if (!ulInner) {
+if (!rootOk) {
+  discoveryError = 'root-html-fetch-failed';
+} else if (!ulInner) {
   discoveryError = 'label-or-ul-not-found';
 } else if (model === 'html-table-v1') {
   discovered = extractHtmlTableV1(ulInner);

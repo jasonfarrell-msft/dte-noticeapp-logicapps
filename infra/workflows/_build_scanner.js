@@ -452,7 +452,7 @@ const workflow = {
         from: "@body('Filter_Enabled_Sites')",
         select: "@item()?['id']"
       },
-      runAfter: { For_Each_Site: ['Succeeded'] }
+      runAfter: { For_Each_Site: ['Succeeded', 'Failed'] }
     },
     Update_Scan_Summary: {
       type: 'Http',
@@ -467,6 +467,7 @@ const workflow = {
         },
         body: {
           lastScanCompleted:  "@{utcNow()}",
+          lastRunStatus:      "@{result('For_Each_Site')?[0]?['status']}",
           registryVersion:    "@{body('Parse_Registry')?['version']}",
           backfillWindowDays: "@{parameters('backfillDays')}",
           backfillCutoffDate: "@{variables('backfillCutoffDate')}",
@@ -481,5 +482,5 @@ const workflow = {
 };
 
 const out = path.join(__dirname, 'scanner-multisite.json');
-fs.writeFileSync(out, JSON.stringify({ definition: workflow, kind: 'stateful' }, null, 2));
+fs.writeFileSync(out, JSON.stringify({ definition: workflow, kind: 'Stateful' }, null, 2));
 console.log('wrote', out, fs.statSync(out).size, 'bytes');

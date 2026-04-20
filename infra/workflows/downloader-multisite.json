@@ -1,6 +1,7 @@
 {
+  "definition": {
   "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
-  "contentVersion": "2.0.0",
+  "contentVersion": "2.1.0",
   "parameters": {
     "storageAccountName": {
       "type": "String"
@@ -108,7 +109,8 @@
         "headers": {
           "x-ms-version": "2020-10-02",
           "x-ms-blob-type": "BlockBlob",
-          "Content-Type": "application/json"
+          "Content-Type": "application/json",
+          "If-None-Match": "*"
         },
         "body": {
           "source": "@{triggerBody()?['source']}",
@@ -201,4 +203,6 @@
     }
   },
   "outputs": {}
+  },
+  "kind": "Stateful"
 }
