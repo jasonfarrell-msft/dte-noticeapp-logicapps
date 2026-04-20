@@ -159,7 +159,7 @@
     },
     "Flatten_Blob_Names": {
       "type": "Compose",
-      "inputs": "@variables('blobNames')",
+      "inputs": "@reverse(variables('blobNames'))",
       "runAfter": {
         "Until_All_Blobs_Listed": [
           "Succeeded"
@@ -202,7 +202,7 @@
     },
     "For_Each_Raw_Blob": {
       "type": "Foreach",
-      "foreach": "@variables('blobNames')",
+      "foreach": "@outputs('Flatten_Blob_Names')",
       "actions": {
         "Parse_Blob_Path": {
           "type": "Compose",
