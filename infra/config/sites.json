@@ -1,64 +1,56 @@
 {
-  "version": "1.0.0",
-  "description": "Multi-site configuration for critical notice ingestion",
-  "sites": {
-    "enbridge": {
-      "enabled": true,
+  "version": "3.0.0",
+  "description": "Site registry for critical notice ingestion. Clients register a site by providing only the rootUrl, dropdownLabel, and parserModel. Business units are discovered automatically by the scanner Logic App at runtime.",
+  "sites": [
+    {
+      "id": "enbridge",
       "name": "Enbridge Infopost",
-      "type": "html-scraper",
-      "baseUrl": "https://infopost.enbridge.com/infopost",
-      "listUrlPattern": "{baseUrl}/noticesList.asp?pipe={unitCode}&type=CRI",
-      "detailUrlPattern": "{baseUrl}/NoticeListDetail.asp?strKey1={noticeId}&type=CRI&Embed=2&pipe={unitCode}",
-      "changeDetectionKey": "strKey1",
-      "businessUnits": [
-        {"code": "AG", "name": "Algonquin Gas Transmission, LLC"},
-        {"code": "BGS", "name": "Bobcat Gas Storage"},
-        {"code": "BIG", "name": "BIG Pipeline"},
-        {"code": "BSP", "name": "Big Sandy Pipeline"},
-        {"code": "EG", "name": "MHP Egan (EHP)"},
-        {"code": "ET", "name": "East Tennessee (ETNG)"},
-        {"code": "GB", "name": "Garden Banks"},
-        {"code": "GPL", "name": "Generation Pipeline"},
-        {"code": "MCGP", "name": "Mississippi Canyon"},
-        {"code": "MB", "name": "MHP Moss Bluff (MBHP)"},
-        {"code": "MNCA", "name": "Maritimes & Northeast Canada"},
-        {"code": "MNUS", "name": "Maritimes & Northeast U.S."},
-        {"code": "MR", "name": "Manta Ray Offshore Gathering Company"},
-        {"code": "NPC", "name": "Nautilus Pipeline Company"},
-        {"code": "NXCA", "name": "NEXUS ULC"},
-        {"code": "NXUS", "name": "NEXUS U.S."},
-        {"code": "SESH", "name": "Southeast Supply Header"},
-        {"code": "SG", "name": "Saltville (SGSC)"},
-        {"code": "SR", "name": "Steckman Ridge"},
-        {"code": "STT", "name": "Sabal Trail"},
-        {"code": "TE", "name": "Texas Eastern"},
-        {"code": "TPGS", "name": "Tres Palacios Gas Storage LLC"},
-        {"code": "VCP", "name": "Valley Crossing Pipeline"},
-        {"code": "WE", "name": "Westcoast Energy"},
-        {"code": "WRGS", "name": "Walker Ridge Gathering System"}
-      ]
-    },
-    "tceconnects": {
       "enabled": true,
+      "parserModel": "html-table-v1",
+      "discovery": {
+        "rootUrl": "https://infopost.enbridge.com/infopost/",
+        "dropdownLabel": "Select Business Unit"
+      },
+      "config": {
+        "listUrlPattern": "https://infopost.enbridge.com/infopost/noticesList.asp?pipe={code}&type=CRI",
+        "detailUrlPattern": "https://infopost.enbridge.com/infopost/NoticeListDetail.asp?strKey1={noticeId}&type=CRI&Embed=2&pipe={code}",
+        "noticeIdToken": "strKey1"
+      }
+    },
+    {
+      "id": "tceconnects",
       "name": "TC Energy Connects",
-      "type": "json-api",
-      "baseUrl": "https://www.tceconnects.com/infopost",
-      "listUrlPattern": "{baseUrl}/webmethods/SSRS_ListCriticalNotices.aspx?assetid={assetId}&page=1&rows=100",
-      "detailUrlPattern": "{baseUrl}/ReportViewer.aspx?%2fInfoPost%2fNoticesSubreport&pNoticeId={noticeId}&AssetNbr={assetId}&rs:Format=HTML4.0",
-      "changeDetectionKey": "noticeId",
-      "businessUnits": [
-        {"code": "ANR", "assetId": "3005", "name": "ANR Pipeline Company"},
-        {"code": "TCO", "assetId": "51", "name": "Columbia Gas Transmission"},
-        {"code": "CGT", "assetId": "14", "name": "Columbia Gulf Transmission"},
-        {"code": "MPC", "assetId": "26", "name": "Midwestern Gas Transmission"},
-        {"code": "NBPL", "assetId": "3029", "name": "Northern Border Pipeline"}
-      ]
+      "enabled": true,
+      "parserModel": "json-grid-v1",
+      "discovery": {
+        "rootUrl": "https://www.tceconnects.com/infopost/",
+        "dropdownLabel": "Pipeline"
+      },
+      "config": {
+        "listUrlPattern": "https://www.tceconnects.com/infopost/webmethods/SSRS_ListCriticalNotices.aspx?assetid={assetId}&page=1&rows=100",
+        "detailUrlPattern": "https://www.tceconnects.com/infopost/ReportViewer.aspx?%2fInfoPost%2fNoticesSubreport&pNoticeId={noticeId}&AssetNbr={assetId}&rs:Format=HTML4.0"
+      }
     }
+  ],
+  "parserModels": {
+    "description": "Reference list of supported parserModel values. Each value implies both a notice-list parsing strategy AND a business-unit discovery strategy in the scanner workflow. Adding a new value requires (1) a new Switch case in scanner-multisite.json AND (2) a new branch in the inline JavaScript extractor.",
+    "supported": [
+      {
+        "id": "html-table-v1",
+        "description": "Notice list endpoint returns HTML; notices live in <tr> rows; noticeId extracted from a query-string token (e.g., strKey1).",
+        "discovery": "On the rootUrl, find the <ul> following the anchor whose text contains dropdownLabel. For each <li><a href> extract code from query-string token 'Pipe='. Display name is the anchor text (parens portion is a display alias and is stripped)."
+      },
+      {
+        "id": "json-grid-v1",
+        "description": "Notice list endpoint returns a JSON object with a `rows` array; each row has `id` and a `cell` array (cell[0]=noticeId, cell[1]=title, cell[2]=postedDate).",
+        "discovery": "On the rootUrl, find the <ul> following the anchor whose text contains dropdownLabel. For each <li><a onclick=\"changeAsset('NNN', 'Name (CODE)')\">, extract assetId from group 1 and code from the parens portion of the label."
+      }
+    ]
   },
   "canonical": {
     "description": "Canonical schema for unified notice storage (Fabric-ready)",
     "fields": [
-      {"name": "source", "type": "string", "description": "Site identifier: enbridge | tceconnects"},
+      {"name": "source", "type": "string", "description": "Site identifier from registry (site.id)"},
       {"name": "pipeline", "type": "string", "description": "Business unit code (e.g., TE, ANR)"},
       {"name": "pipelineName", "type": "string", "description": "Full pipeline company name"},
       {"name": "noticeId", "type": "string", "description": "Unique notice identifier"},

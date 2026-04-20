@@ -46,26 +46,14 @@ Critical notices are polled every 15 minutes, deduplicated, and stored in Azure 
 
 ## Data Sources
 
-### Enbridge Infopost (25 Business Units)
+Business units are **auto-discovered** at scan time from each site's landing-page dropdown. The registry only declares the site (`rootUrl`, `dropdownLabel`, `parserModel`) — no hand-maintained pipeline lists.
 
-| Code | Pipeline Name |
-|------|--------------|
-| AG | Algonquin Gas Transmission |
-| TE | Texas Eastern |
-| STT | Sabal Trail |
-| SESH | Southeast Supply Header |
-| ET | East Tennessee |
-| ... | [See full list in config](infra/config/sites.json) |
+| Site | Parser Model | Discovery Source | Typical # BUs |
+|------|--------------|------------------|---------------|
+| `enbridge` (Enbridge Infopost) | `html-table-v1` | "Select Business Unit" `<ul>` (codes from `?Pipe=XX`) | ~25 |
+| `tceconnects` (TC Energy Connects) | `json-grid-v1` | "Pipeline" `<ul>` (codes + assetId from `changeAsset(...)`) | ~12 (deduped) |
 
-### TC Energy Connects (5 Business Units)
-
-| Code | Asset ID | Pipeline Name |
-|------|----------|--------------|
-| ANR | 3005 | ANR Pipeline Company |
-| TCO | 51 | Columbia Gas Transmission |
-| CGT | 14 | Columbia Gulf Transmission |
-| MPC | 26 | Midwestern Gas Transmission |
-| NBPL | 3029 | Northern Border Pipeline |
+If discovery fails or returns suspiciously few entries (< 50% of last good run), the scanner falls back to the cached list at `critical-notices/discovery/{siteId}.json`.
 
 ## Storage Structure
 
@@ -173,13 +161,55 @@ All notices are normalized to this unified schema:
 
 ## How It Works
 
-1. **Scanner** runs every 15 minutes
-2. For each business unit, fetches the notice list
-3. Extracts notice IDs and checks if already captured (HEAD request)
-4. **Downloader** fetches new notices only (deduplication)
-5. Stores raw HTML and canonical JSON metadata
-6. Updates daily index for efficient querying
-7. Data Factory pushes to Microsoft Fabric Lakehouse
+The scanner is **registry-driven and self-discovering**. Each scan run:
+
+1. **Scanner** triggers every 15 minutes
+2. Reads the **site registry** from blob `critical-notices/config/sites.json`
+3. Filters to `enabled: true` sites
+4. **Per site**: HTTP GET `discovery.rootUrl`, then runs an inline **Execute JavaScript Code** action that scrapes the dropdown identified by `discovery.dropdownLabel` and extracts business units using a per-`parserModel` regex strategy (Enbridge: `?Pipe=XX` from anchor href; TCE: `changeAsset(assetId, 'Name (CODE)')`). Results are deduped by code.
+5. **Sanity check**: if discovery returned 0 BUs *or* fewer than 50% of the last cached count, the scanner uses the previously cached list at `discovery/{siteId}.json`. On a successful live discovery, the cache is rewritten.
+6. Dispatches via `Switch` on `parserModel` (`html-table-v1` | `json-grid-v1`) over the discovered BU list, fetches each notice list, HEAD-checks blob storage to skip already-captured notices.
+7. **Downloader** fetches new notices only and writes raw + canonical JSON.
+8. Tracking + scan-summary blobs are updated for observability.
+9. Data Factory pushes to Microsoft Fabric Lakehouse.
+
+### Adding a new site (client-friendly)
+
+A new site requires only **three fields** in the registry:
+
+```jsonc
+{
+  "id": "newsite",
+  "name": "New Pipeline Operator",
+  "enabled": true,
+  "parserModel": "html-table-v1",
+  "discovery": {
+    "rootUrl": "https://newsite.example.com/infopost/",
+    "dropdownLabel": "Select Business Unit"
+  },
+  "config": {
+    "listUrlPattern":   "https://newsite.example.com/infopost/{code}List.asp?strKey1=",
+    "detailUrlPattern": "https://newsite.example.com/infopost/{code}Detail.asp?strKey1={noticeId}",
+    "noticeIdToken":    "strKey1"
+  }
+}
+```
+
+If the new site uses an existing `parserModel` → no workflow change is needed; just upload the registry blob. If it requires a new shape, add a case to `Dispatch_By_ParserModel` in `scanner-multisite.json` and add a regex branch in `infra/workflows/discover-bus.js`.
+
+### Deploying registry changes
+
+The registry is read at runtime from blob storage — no Logic App redeploy is required. Upload the seed/updated file with:
+
+```bash
+az storage blob upload \
+  --account-name stdtenoticeappeus2mx01 \
+  --container-name critical-notices \
+  --name config/sites.json \
+  --file infra/config/sites.json \
+  --auth-mode login \
+  --overwrite
+```
 
 ## Project Structure
 
@@ -188,7 +218,7 @@ All notices are normalized to this unified schema:
 │   ├── main.bicep                    # Main deployment orchestration
 │   ├── main.parameters.json          # Environment parameters
 │   ├── config/
-│   │   └── sites.json                # Multi-site configuration
+│   │   └── sites.json                # Site registry (uploaded to blob; read by scanner at runtime)
 │   ├── modules/
 │   │   ├── storage.bicep             # Blob Storage with lifecycle
 │   │   ├── keyvault.bicep            # Key Vault with RBAC
@@ -198,7 +228,9 @@ All notices are normalized to this unified schema:
 │   │   ├── foundry.bicep             # Azure AI Foundry
 │   │   └── datafactory.bicep         # Data Factory
 │   └── workflows/
-│       ├── scanner-multisite.json    # Scanner workflow definition
+│       ├── scanner-multisite.json    # Scanner workflow (v4 — discovery + dispatch)
+│       ├── discover-bus.js           # Inline JS used by scanner discovery action
+│       ├── _build_scanner.js         # Build helper: embeds discover-bus.js into scanner JSON
 │       ├── downloader-multisite.json # Downloader workflow definition
 │       └── parser-multisite.json     # AI parser workflow
 ├── infrastructure-plan.md            # Detailed architecture documentation
@@ -209,7 +241,7 @@ All notices are normalized to this unified schema:
 
 - [x] Site analysis and API discovery
 - [x] Unified storage schema design
-- [x] Multi-site scanner workflow
+- [x] Multi-site scanner workflow (registry-driven, parserModel dispatch)
 - [x] Multi-site downloader workflow
 - [x] VNet-isolated infrastructure (Bicep)
 - [x] Azure AI Foundry integration
