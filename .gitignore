@@ -5,3 +5,7 @@
 .squad/sessions/
 # Squad: SubSquad activation file (local to this machine)
 .squad-workstream
+
+# scratch artifacts from test/agent runs
+_*.json
+
