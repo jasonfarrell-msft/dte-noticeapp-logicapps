@@ -206,11 +206,6 @@ const definition = {
                     "authentication": { "type": "ManagedServiceIdentity", "audience": "https://cognitiveservices.azure.com" }
                   },
                   "retryPolicy": { "type": "exponential", "count": 6, "interval": "PT20S", "minimumInterval": "PT20S", "maximumInterval": "PT5M" },
-                  "trackedProperties": {
-                    "source":   "@split(items('For_Each_Raw_Blob'), '/')[1]",
-                    "pipeline": "@split(items('For_Each_Raw_Blob'), '/')[3]",
-                    "noticeId": "@replace(last(split(items('For_Each_Raw_Blob'), '/')), '.html', '')"
-                  },
                   "runAfter": { "Scrub_HTML": ["Succeeded"] }
                 },
                 "Parse_Foundry_Response": {
@@ -292,11 +287,6 @@ const definition = {
                           "If-None-Match":  "*"
                         },
                         "body": "@outputs('Build_Final_Parsed_Document')"
-                      },
-                      "trackedProperties": {
-                        "source":   "@split(items('For_Each_Raw_Blob'), '/')[1]",
-                        "pipeline": "@split(items('For_Each_Raw_Blob'), '/')[3]",
-                        "noticeId": "@replace(last(split(items('For_Each_Raw_Blob'), '/')), '.html', '')"
                       },
                       "runAfter": { "Build_Final_Parsed_Document": ["Succeeded"] }
                     },

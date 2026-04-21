@@ -1,0 +1,16 @@
+{
+  "definition_href": "https://logic-dte-noticeapp-eus2-mx01.azurewebsites.net/admin/vfs/site/wwwroot/parser-multisite/workflow.json",
+  "health": {
+    "state": "Healthy"
+  },
+  "href": "https://logic-dte-noticeapp-eus2-mx01.azurewebsites.net/runtime/webhooks/workflow/api/management/workflows/parser-multisite",
+  "isDisabled": false,
+  "kind": "Stateful",
+  "name": "parser-multisite",
+  "triggers": {
+    "Recurrence_Check_For_Raw_HTML": {
+      "kind": "",
+      "type": "Recurrence"
+    }
+  }
+}

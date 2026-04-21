@@ -354,6 +354,11 @@
                       "minimumInterval": "PT20S",
                       "maximumInterval": "PT5M"
                     },
+                    "trackedProperties": {
+                      "source": "@split(items('For_Each_Raw_Blob'), '/')[1]",
+                      "pipeline": "@split(items('For_Each_Raw_Blob'), '/')[3]",
+                      "noticeId": "@replace(last(split(items('For_Each_Raw_Blob'), '/')), '.html', '')"
+                    },
                     "runAfter": {
                       "Scrub_HTML": [
                         "Succeeded"
@@ -487,6 +492,11 @@
                             "If-None-Match": "*"
                           },
                           "body": "@outputs('Build_Final_Parsed_Document')"
+                        },
+                        "trackedProperties": {
+                          "source": "@split(items('For_Each_Raw_Blob'), '/')[1]",
+                          "pipeline": "@split(items('For_Each_Raw_Blob'), '/')[3]",
+                          "noticeId": "@replace(last(split(items('For_Each_Raw_Blob'), '/')), '.html', '')"
                         },
                         "runAfter": {
                           "Build_Final_Parsed_Document": [
@@ -642,3 +652,4 @@
   },
   "kind": "Stateful"
 }
+
