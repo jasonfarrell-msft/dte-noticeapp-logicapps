@@ -1,6 +1,7 @@
 {
+  "definition": {
   "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
-  "contentVersion": "1.0.0.0",
+  "contentVersion": "2.1.0",
   "parameters": {
     "storageAccountName": {
       "type": "String"
@@ -14,17 +15,37 @@
         "schema": {
           "type": "object",
           "properties": {
-            "businessUnit": {
-              "type": "string"
+            "source": {
+              "type": "string",
+              "description": "Source site: enbridge | tceconnects"
+            },
+            "pipeline": {
+              "type": "string",
+              "description": "Pipeline/business unit code"
+            },
+            "pipelineName": {
+              "type": "string",
+              "description": "Full pipeline name (optional)"
             },
             "noticeId": {
               "type": "string"
             },
+            "title": {
+              "type": "string",
+              "description": "Notice title (from JSON list)"
+            },
             "url": {
               "type": "string"
+            },
+            "postedDate": {
+              "type": "string"
+            },
+            "assetId": {
+              "type": "string",
+              "description": "TCeConnects asset ID (optional)"
             }
           },
-          "required": ["businessUnit", "noticeId", "url"]
+          "required": ["source", "pipeline", "noticeId", "url"]
         }
       }
     }
@@ -49,18 +70,18 @@
         "method": "GET",
         "uri": "@{triggerBody()?['url']}",
         "headers": {
-          "User-Agent": "CriticalNotice-Downloader/1.0"
+          "User-Agent": "CriticalNotice-Downloader/2.0"
         }
       },
       "runAfter": {
         "Initialize_DateFolder": ["Succeeded"]
       }
     },
-    "Create_Blob_RawHtml": {
+    "Create_Blob_RawContent": {
       "type": "Http",
       "inputs": {
         "method": "PUT",
-        "uri": "https://@{parameters('storageAccountName')}.blob.core.windows.net/critical-notices/raw-html/@{variables('dateFolder')}/@{triggerBody()?['businessUnit']}/@{triggerBody()?['noticeId']}.html",
+        "uri": "https://@{parameters('storageAccountName')}.blob.core.windows.net/critical-notices/raw/@{triggerBody()?['source']}/@{variables('dateFolder')}/@{triggerBody()?['pipeline']}/@{triggerBody()?['noticeId']}.html",
         "authentication": {
           "type": "ManagedServiceIdentity",
           "audience": "https://storage.azure.com/"
@@ -76,11 +97,44 @@
         "HTTP_Get_NoticeDetail": ["Succeeded"]
       }
     },
-    "Create_Metadata_Entry": {
+    "Create_Canonical_Notice": {
       "type": "Http",
       "inputs": {
         "method": "PUT",
-        "uri": "https://@{parameters('storageAccountName')}.blob.core.windows.net/critical-notices/metadata/downloads/@{variables('dateFolder')}/@{triggerBody()?['businessUnit']}/@{triggerBody()?['noticeId']}.json",
+        "uri": "https://@{parameters('storageAccountName')}.blob.core.windows.net/critical-notices/notices/@{triggerBody()?['source']}/@{triggerBody()?['pipeline']}/@{triggerBody()?['noticeId']}.json",
+        "authentication": {
+          "type": "ManagedServiceIdentity",
+          "audience": "https://storage.azure.com/"
+        },
+        "headers": {
+          "x-ms-version": "2020-10-02",
+          "x-ms-blob-type": "BlockBlob",
+          "Content-Type": "application/json",
+          "If-None-Match": "*"
+        },
+        "body": {
+          "source": "@{triggerBody()?['source']}",
+          "pipeline": "@{triggerBody()?['pipeline']}",
+          "pipelineName": "@{coalesce(triggerBody()?['pipelineName'], triggerBody()?['pipeline'])}",
+          "noticeId": "@{triggerBody()?['noticeId']}",
+          "title": "@{coalesce(triggerBody()?['title'], '')}",
+          "postedDate": "@{triggerBody()?['postedDate']}",
+          "sourceUrl": "@{triggerBody()?['url']}",
+          "rawBlobPath": "raw/@{triggerBody()?['source']}/@{variables('dateFolder')}/@{triggerBody()?['pipeline']}/@{triggerBody()?['noticeId']}.html",
+          "scrapedAt": "@{utcNow()}",
+          "processingStatus": "raw_captured",
+          "assetId": "@{coalesce(triggerBody()?['assetId'], '')}"
+        }
+      },
+      "runAfter": {
+        "Create_Blob_RawContent": ["Succeeded"]
+      }
+    },
+    "Append_To_Daily_Index": {
+      "type": "Http",
+      "inputs": {
+        "method": "PUT",
+        "uri": "https://@{parameters('storageAccountName')}.blob.core.windows.net/critical-notices/indices/daily/@{variables('dateFolder')}/@{triggerBody()?['source']}-@{triggerBody()?['pipeline']}-@{triggerBody()?['noticeId']}.json",
         "authentication": {
           "type": "ManagedServiceIdentity",
           "audience": "https://storage.azure.com/"
@@ -91,15 +145,16 @@
           "Content-Type": "application/json"
         },
         "body": {
-          "businessUnit": "@{triggerBody()?['businessUnit']}",
+          "source": "@{triggerBody()?['source']}",
+          "pipeline": "@{triggerBody()?['pipeline']}",
           "noticeId": "@{triggerBody()?['noticeId']}",
-          "sourceUrl": "@{triggerBody()?['url']}",
-          "blobPath": "raw-html/@{variables('dateFolder')}/@{triggerBody()?['businessUnit']}/@{triggerBody()?['noticeId']}.html",
-          "downloadedAt": "@{utcNow()}"
+          "title": "@{coalesce(triggerBody()?['title'], '')}",
+          "postedDate": "@{triggerBody()?['postedDate']}",
+          "scrapedAt": "@{utcNow()}"
         }
       },
       "runAfter": {
-        "Create_Blob_RawHtml": ["Succeeded"]
+        "Create_Canonical_Notice": ["Succeeded"]
       }
     },
     "Response_Success": {
@@ -111,14 +166,16 @@
         },
         "body": {
           "status": "success",
-          "businessUnit": "@{triggerBody()?['businessUnit']}",
+          "source": "@{triggerBody()?['source']}",
+          "pipeline": "@{triggerBody()?['pipeline']}",
           "noticeId": "@{triggerBody()?['noticeId']}",
-          "blobPath": "raw-html/@{variables('dateFolder')}/@{triggerBody()?['businessUnit']}/@{triggerBody()?['noticeId']}.html",
-          "downloadedAt": "@{utcNow()}"
+          "noticePath": "notices/@{triggerBody()?['source']}/@{triggerBody()?['pipeline']}/@{triggerBody()?['noticeId']}.json",
+          "rawPath": "raw/@{triggerBody()?['source']}/@{variables('dateFolder')}/@{triggerBody()?['pipeline']}/@{triggerBody()?['noticeId']}.html",
+          "scrapedAt": "@{utcNow()}"
         }
       },
       "runAfter": {
-        "Create_Metadata_Entry": ["Succeeded"]
+        "Append_To_Daily_Index": ["Succeeded"]
       },
       "kind": "Http"
     },
@@ -131,17 +188,21 @@
         },
         "body": {
           "status": "failed",
-          "businessUnit": "@{triggerBody()?['businessUnit']}",
+          "source": "@{triggerBody()?['source']}",
+          "pipeline": "@{triggerBody()?['pipeline']}",
           "noticeId": "@{triggerBody()?['noticeId']}",
           "error": "Failed to download or store notice"
         }
       },
       "runAfter": {
         "HTTP_Get_NoticeDetail": ["Failed"],
-        "Create_Blob_RawHtml": ["Failed"]
+        "Create_Blob_RawContent": ["Failed"],
+        "Create_Canonical_Notice": ["Failed"]
       },
       "kind": "Http"
     }
   },
   "outputs": {}
+  },
+  "kind": "Stateful"
 }

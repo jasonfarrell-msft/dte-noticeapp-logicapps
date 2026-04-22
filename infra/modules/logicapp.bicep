@@ -25,10 +25,10 @@ param foundryApiKey string
 @description('Microsoft Foundry deployment name')
 param foundryDeploymentName string
 
-// Load workflow definitions from JSON files (multi-site versions)
-var scannerDefinition = loadJsonContent('../workflows/scanner-multisite.json')
-var downloaderDefinition = loadJsonContent('../workflows/downloader-multisite.json')
-var parserDefinition = loadJsonContent('../workflows/parser-multisite.json')
+// Load workflow definitions from JSON files
+var scannerDefinition = loadJsonContent('../workflows/scanner.json')
+var downloaderDefinition = loadJsonContent('../workflows/downloader.json')
+var parserDefinition = loadJsonContent('../workflows/parser.json')
 
 // ============================================================================
 // Downloader (deployed first - Scanner needs its callback URL)
@@ -36,7 +36,7 @@ var parserDefinition = loadJsonContent('../workflows/parser-multisite.json')
 resource downloaderLogicApp 'Microsoft.Logic/workflows@2019-05-01' = {
   name: '${logicAppName}-downloader'
   location: location
-  tags: union(tags, { Workflow: 'CriticalNotice-Downloader-Multisite' })
+  tags: union(tags, { Workflow: 'CriticalNotice-Downloader' })
   identity: {
     type: 'SystemAssigned'
   }
@@ -57,7 +57,7 @@ resource downloaderLogicApp 'Microsoft.Logic/workflows@2019-05-01' = {
 resource scannerLogicApp 'Microsoft.Logic/workflows@2019-05-01' = {
   name: '${logicAppName}-scanner'
   location: location
-  tags: union(tags, { Workflow: 'CriticalNotice-Scanner-Multisite' })
+  tags: union(tags, { Workflow: 'CriticalNotice-Scanner' })
   identity: {
     type: 'SystemAssigned'
   }
@@ -82,7 +82,7 @@ resource scannerLogicApp 'Microsoft.Logic/workflows@2019-05-01' = {
 resource parserLogicApp 'Microsoft.Logic/workflows@2019-05-01' = {
   name: '${logicAppName}-parser'
   location: location
-  tags: union(tags, { Workflow: 'CriticalNotice-Parser-Multisite' })
+  tags: union(tags, { Workflow: 'CriticalNotice-Parser' })
   identity: {
     type: 'SystemAssigned'
   }

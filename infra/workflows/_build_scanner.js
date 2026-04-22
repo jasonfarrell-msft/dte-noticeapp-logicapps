@@ -1,4 +1,4 @@
-// Build helper: emits scanner-multisite.json. Run: node _build_scanner.js
+// Build helper: emits scanner.json. Run: node _build_scanner.js
 // This file is NOT deployed; it's just a maintenance helper to keep the inline JS
 // extractor readable instead of pre-escaped inside a JSON string.
 const fs = require('fs');
@@ -481,6 +481,6 @@ const workflow = {
   outputs: {}
 };
 
-const out = path.join(__dirname, 'scanner-multisite.json');
+const out = path.join(__dirname, 'scanner.json');
 fs.writeFileSync(out, JSON.stringify({ definition: workflow, kind: 'Stateful' }, null, 2));
 console.log('wrote', out, fs.statSync(out).size, 'bytes');

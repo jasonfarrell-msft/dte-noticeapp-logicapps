@@ -123,8 +123,8 @@ Both sources map to this unified schema for downstream processing:
 
 | Workflow | Purpose | Trigger |
 |----------|---------|---------|
-| `scanner-multisite` | Reads site registry from blob, dispatches each enabled site by `parserModel` (Switch) | Scheduled (every 15 min) |
-| `downloader-multisite` | Downloads individual notices from any source | HTTP trigger (called by Scanner) |
+| `scanner` | Reads site registry from blob, dispatches each enabled site by `parserModel` (Switch) | Scheduled (every 15 min) |
+| `downloader` | Downloads individual notices from any source | HTTP trigger (called by Scanner) |
 
 **Registry-driven dispatch:** the scanner has no source-specific scopes. It loads `critical-notices/config/sites.json` at runtime and routes each site to a Switch case keyed on `parserModel`. Current models:
 
@@ -133,7 +133,7 @@ Both sources map to this unified schema for downstream processing:
 | `html-table-v1` | HTML `<tr>` rows; noticeId via query-string token | Enbridge (25 BUs) |
 | `json-grid-v1` | JSON `{ rows: [{ id, cell: [noticeId, title, postedDate] }] }` | TC Energy Connects (5 BUs) |
 
-To add a new source that fits an existing model, only the registry blob changes (no redeploy). New models require a new Switch case in `scanner-multisite.json`.
+To add a new source that fits an existing model, only the registry blob changes (no redeploy). New models require a new Switch case in `scanner.json`.
 
 ### 2. Azure Blob Storage - **Unified Data Lake**
 
@@ -217,7 +217,7 @@ Store:
 ┌─────────────────────────────────────────────────────────────────────────────────────┐
 │                              AZURE LOGIC APPS                                        │
 │  ┌───────────────────┐    ┌─────────────────────────────────────────────────────┐   │
-│  │  Recurrence       │───▶│  scanner-multisite                                   │   │
+│  │  Recurrence       │───▶│  scanner                                             │   │
 │  │  (Every 15 min)   │    │                                                      │   │
 │  └───────────────────┘    │  ┌─────────────────┐    ┌─────────────────┐         │   │
 │                           │  │ SCOPE: Enbridge │    │ SCOPE: TCeConn. │         │   │
@@ -232,7 +232,7 @@ Store:
 │                           └───────────┬───────────────────────────────────┘          │
 │                                       │ (if 404 = new notice)                        │
 │                           ┌───────────▼───────────────────────────────────┐          │
-│                           │  downloader-multisite                          │          │
+│                           │  downloader                                    │          │
 │                           │  • Downloads raw HTML                          │          │
 │                           │  • Creates canonical JSON metadata             │          │
 │                           │  • Updates daily index                         │          │
@@ -422,8 +422,8 @@ New sources can be added by:
 | File | Purpose |
 |------|---------|
 | `infra/config/sites.json` | Multi-site configuration with all pipelines |
-| `infra/workflows/scanner-multisite.json` | Unified scanner for both sources |
-| `infra/workflows/downloader-multisite.json` | Source-agnostic notice downloader |
+| `infra/workflows/scanner.json` | Unified scanner for both sources |
+| `infra/workflows/downloader.json` | Source-agnostic notice downloader |
 | `infra/modules/storage.bicep` | Updated storage with new container structure |
 | `infrastructure-plan.md` | This document |
 
@@ -432,7 +432,7 @@ New sources can be added by:
 ## Next Steps
 
 1. ⏳ Provision Azure resources with updated Bicep
-2. ⏳ Deploy scanner-multisite and downloader-multisite workflows
+2. ⏳ Deploy scanner and downloader workflows
 3. ⏳ Test with single pipeline from each source (TE, ANR)
 4. ⏳ Validate storage structure and deduplication
 5. ⏳ Enable all 30 pipelines

@@ -33,7 +33,7 @@
     }
   ],
   "parserModels": {
-    "description": "Reference list of supported parserModel values. Each value implies both a notice-list parsing strategy AND a business-unit discovery strategy in the scanner workflow. Adding a new value requires (1) a new Switch case in scanner-multisite.json AND (2) a new branch in the inline JavaScript extractor.",
+    "description": "Reference list of supported parserModel values. Each value implies both a notice-list parsing strategy AND a business-unit discovery strategy in the scanner workflow. Adding a new value requires (1) a new Switch case in scanner.json AND (2) a new branch in the inline JavaScript extractor.",
     "supported": [
       {
         "id": "html-table-v1",

@@ -18,7 +18,7 @@ Critical notices are polled every 15 minutes, deduplicated, and stored in Azure 
 │                              AZURE LOGIC APPS                                │
 │                                                                              │
 │   ┌───────────────────┐    ┌──────────────────────────────────────────────┐  │
-│   │  Recurrence       │───▶│  scanner-multisite (registry-driven, v4)     │  │
+│   │  Recurrence       │───▶│  scanner (registry-driven, v4)               │  │
 │   │  (Every 15 min)   │    │                                              │  │
 │   └───────────────────┘    │  1. Read site registry from blob             │  │
 │                            │  2. Per site: GET rootUrl                    │  │
@@ -28,7 +28,7 @@ Critical notices are polled every 15 minutes, deduplicated, and stored in Azure 
 │                            └──────────────────────┬───────────────────────┘  │
 │                                                   │                          │
 │                            ┌──────────────────────▼───────────────────────┐  │
-│                            │  downloader-multisite (source-agnostic)      │  │
+│                            │  downloader (source-agnostic)                │  │
 │                            │  • Downloads raw HTML                        │  │
 │                            │  • Creates canonical JSON metadata           │  │
 │                            │  • Deduplicates via HEAD check               │  │
@@ -254,7 +254,7 @@ A new site requires only **three fields** in the registry:
 }
 ```
 
-If the new site uses an existing `parserModel` → no workflow change is needed; just upload the registry blob. If it requires a new shape, add a case to `Dispatch_By_ParserModel` in `scanner-multisite.json` and add a regex branch in `infra/workflows/discover-bus.js`.
+If the new site uses an existing `parserModel` → no workflow change is needed; just upload the registry blob. If it requires a new shape, add a case to `Dispatch_By_ParserModel` in `scanner.json` and add a regex branch in `infra/workflows/discover-bus.js`.
 
 ### Deploying registry changes
 
@@ -287,11 +287,11 @@ az storage blob upload \
 │   │   ├── foundry.bicep             # Azure AI Foundry
 │   │   └── datafactory.bicep         # Data Factory
 │   └── workflows/
-│       ├── scanner-multisite.json    # Scanner workflow (v4 — discovery + dispatch)
+│       ├── scanner.json              # Scanner workflow (v4 — discovery + dispatch)
 │       ├── discover-bus.js           # Inline JS used by scanner discovery action
 │       ├── _build_scanner.js         # Build helper: embeds discover-bus.js into scanner JSON
-│       ├── downloader-multisite.json # Downloader workflow definition
-│       └── parser-multisite.json     # AI parser workflow
+│       ├── downloader.json           # Downloader workflow definition
+│       └── parser.json               # AI parser workflow
 ├── infrastructure-plan.md            # Detailed architecture documentation
 └── README.md                         # This file
 ```

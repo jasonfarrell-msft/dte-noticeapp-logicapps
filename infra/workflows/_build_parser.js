@@ -1,4 +1,4 @@
-// Builds parser-multisite.json wrapped in {definition,kind:Stateful} envelope.
+// Builds parser.json wrapped in {definition,kind:Stateful} envelope.
 // Includes all P0+P1 review fixes:
 //   - Envelope wrapper
 //   - Foundry MI auth (no api-key)
@@ -392,6 +392,6 @@ const definition = {
 };
 
 const wrapped = { definition: definition, kind: "Stateful" };
-const out = path.join(__dirname, 'parser-multisite.json');
+const out = path.join(__dirname, 'parser.json');
 fs.writeFileSync(out, JSON.stringify(wrapped, null, 2));
 console.log('Wrote', out, '(' + fs.statSync(out).size + ' bytes)');
