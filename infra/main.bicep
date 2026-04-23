@@ -45,6 +45,18 @@ param dataFactoryName string = 'adf-dte-noticeapp-eus2-mx01'
 @description('Foundry account name')
 param foundryAccountName string = 'cog-dte-noticeapp-eus2-mx01'
 
+@description('SQL logical server name (must be globally unique)')
+param sqlServerName string = 'sql-dte-noticeapp-eus2-mx01'
+
+@description('SQL database name for parsed notice landing')
+param sqlDatabaseName string = 'noticesdb'
+
+@description('AAD object ID granted as SQL AAD admin (user/group/SP)')
+param sqlAdminAadObjectId string
+
+@description('AAD login name shown in portal for the SQL AAD admin')
+param sqlAdminAadLoginName string
+
 // ============================================================================
 // Module Deployments
 // ============================================================================
@@ -144,6 +156,7 @@ module logicAppStandard 'modules/logicapp-standard.bicep' = {
     foundryDeploymentName: foundry.outputs.deploymentName
     vnetIntegrationSubnetId: vnet.outputs.logicAppsSubnetId
     keyVaultUri: keyVault.outputs.keyVaultUri
+    dataFactoryName: dataFactoryName
     tags: tags
   }
   dependsOn: [
@@ -162,6 +175,21 @@ module dataFactory 'modules/datafactory.bicep' = {
     location: location
     dataFactoryName: dataFactoryName
     storageAccountId: storage.outputs.storageAccountId
+    tags: tags
+    sqlServerFqdn: sql.outputs.sqlServerFqdn
+    sqlDatabaseName: sql.outputs.sqlDatabaseName
+  }
+}
+
+// 8. Azure SQL (serverless, public endpoint for POC) -- landing target for parsed notices
+module sql 'modules/sql.bicep' = {
+  name: 'sql-deployment'
+  params: {
+    location: location
+    sqlServerName: sqlServerName
+    sqlDatabaseName: sqlDatabaseName
+    sqlAdminAadObjectId: sqlAdminAadObjectId
+    sqlAdminAadLoginName: sqlAdminAadLoginName
     tags: tags
   }
 }
@@ -234,6 +262,19 @@ resource adfKeyVaultRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = 
   }
 }
 
+// Data Factory Contributor for parser Logic App (so parser can invoke
+// LandParsedToSql/createRun via REST after each successful parsed-blob write)
+// Role ID: 673868aa-7521-48a0-acc6-0f60742d39f5
+resource parserAdfRunnerRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(resourceGroup().id, dataFactoryName, logicAppName, 'DataFactoryContributor')
+  scope: resourceGroup()
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '673868aa-7521-48a0-acc6-0f60742d39f5')
+    principalId: logicAppStandard.outputs.logicAppPrincipalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
 // ============================================================================
 // Outputs
 // ============================================================================
@@ -273,6 +314,12 @@ output dataFactoryName string = dataFactory.outputs.dataFactoryName
 
 @description('Data Factory managed identity principal ID')
 output dataFactoryPrincipalId string = dataFactory.outputs.dataFactoryPrincipalId
+
+@description('SQL server FQDN')
+output sqlServerFqdn string = sql.outputs.sqlServerFqdn
+
+@description('SQL database name')
+output sqlDatabaseName string = sql.outputs.sqlDatabaseName
 
 @description('Foundry endpoint')
 output foundryEndpoint string = foundry.outputs.foundryEndpoint

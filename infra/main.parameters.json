@@ -20,6 +20,18 @@
     "dataFactoryName": {
       "value": "adf-dte-noticeapp-eus2-mx01"
     },
+    "sqlServerName": {
+      "value": "sql-dte-noticeapp-eus2-mx01"
+    },
+    "sqlDatabaseName": {
+      "value": "noticesdb"
+    },
+    "sqlAdminAadObjectId": {
+      "value": "61a37498-9ab6-43d2-b70f-706fd58274e7"
+    },
+    "sqlAdminAadLoginName": {
+      "value": "jasonfarrell@MngEnvMCAP331427.onmicrosoft.com"
+    },
     "tags": {
       "value": {
         "Project": "Critical Notice Ingestion",

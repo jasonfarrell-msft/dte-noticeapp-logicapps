@@ -15,6 +15,18 @@
     "type": "String",
     "value": "@appsetting('FoundryDeploymentName')"
   },
+  "subscriptionId": {
+    "type": "String",
+    "value": "@appsetting('SubscriptionId')"
+  },
+  "resourceGroupName": {
+    "type": "String",
+    "value": "@appsetting('ResourceGroupName')"
+  },
+  "dataFactoryName": {
+    "type": "String",
+    "value": "@appsetting('DataFactoryName')"
+  },
   "backfillDays": {
     "type": "Int",
     "value": 10

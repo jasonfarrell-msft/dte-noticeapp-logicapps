@@ -33,6 +33,15 @@ param vnetIntegrationSubnetId string
 @description('Key Vault URI for secrets reference')
 param keyVaultUri string
 
+@description('Subscription ID (for parser ADF createRun call)')
+param subscriptionId string = subscription().subscriptionId
+
+@description('Resource group name (for parser ADF createRun call)')
+param resourceGroupName string = resourceGroup().name
+
+@description('Data Factory name (for parser ADF createRun call)')
+param dataFactoryName string
+
 // ============================================================================
 // App Service Plan (Workflow Standard WS1)
 // ============================================================================
@@ -127,6 +136,18 @@ resource logicAppStandard 'Microsoft.Web/sites@2023-12-01' = {
         {
           name: 'KeyVaultUri'
           value: keyVaultUri
+        }
+        {
+          name: 'SubscriptionId'
+          value: subscriptionId
+        }
+        {
+          name: 'ResourceGroupName'
+          value: resourceGroupName
+        }
+        {
+          name: 'DataFactoryName'
+          value: dataFactoryName
         }
         // VNet integration settings
         {

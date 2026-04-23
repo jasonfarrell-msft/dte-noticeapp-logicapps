@@ -18,6 +18,12 @@ param storageAccountId string = ''
 @description('Storage account name for connection')
 param storageAccountName string = 'stdtenoticeappeus2mx01'
 
+@description('SQL server FQDN for parsed notices landing (e.g. sql-xxx.database.windows.net)')
+param sqlServerFqdn string
+
+@description('SQL database name for parsed notices landing')
+param sqlDatabaseName string
+
 // Data Factory resource
 resource dataFactory 'Microsoft.DataFactory/factories@2018-06-01' = {
   name: dataFactoryName
@@ -74,6 +80,27 @@ resource fabricLinkedService 'Microsoft.DataFactory/factories/linkedservices@201
     }
     description: 'Mock linked service to Fabric Lakehouse - configure after deployment with actual workspace credentials'
   }
+}
+
+// Linked Service: Azure SQL Database (managed identity auth) for parsed notices landing
+resource sqlLinkedService 'Microsoft.DataFactory/factories/linkedservices@2018-06-01' = {
+  parent: dataFactory
+  name: 'AzureSqlDatabase_ManagedIdentity'
+  properties: {
+    type: 'AzureSqlDatabase'
+    typeProperties: {
+      connectionString: 'Server=tcp:${sqlServerFqdn},1433;Initial Catalog=${sqlDatabaseName};Encrypt=true;Connection Timeout=30;'
+      authenticationType: 'SystemAssignedManagedIdentity'
+    }
+    connectVia: {
+      referenceName: 'AutoResolveIntegrationRuntime'
+      type: 'IntegrationRuntimeReference'
+    }
+    description: 'Landing target for parsed critical notices using ADF managed identity'
+  }
+  dependsOn: [
+    integrationRuntime
+  ]
 }
 
 // Integration Runtime (Auto-resolve)
@@ -180,9 +207,215 @@ resource fabricSinkDataset 'Microsoft.DataFactory/factories/datasets@2018-06-01'
   }
 }
 
+// Dataset: Source - Parsed notices JSON (single-file when sourceFolder+fileName provided,
+// recursive wildcard fallback when both are empty)
+resource parsedJsonDataset 'Microsoft.DataFactory/factories/datasets@2018-06-01' = {
+  parent: dataFactory
+  name: 'ParsedNoticesJsonSource'
+  properties: {
+    type: 'Json'
+    linkedServiceName: {
+      referenceName: blobLinkedService.name
+      type: 'LinkedServiceReference'
+    }
+    parameters: {
+      sourceFolder: {
+        type: 'String'
+        defaultValue: 'parsed'
+      }
+      fileName: {
+        type: 'String'
+        defaultValue: ''
+      }
+    }
+    typeProperties: {
+      location: {
+        type: 'AzureBlobStorageLocation'
+        container: 'critical-notices'
+        folderPath: {
+          value: '@dataset().sourceFolder'
+          type: 'Expression'
+        }
+        fileName: {
+          value: '@dataset().fileName'
+          type: 'Expression'
+        }
+      }
+    }
+    description: 'Parsed notice JSON documents written by the parser Logic App'
+    folder: {
+      name: 'Sources'
+    }
+  }
+}
+
+// Dataset: Sink - Azure SQL dbo.notices
+resource sqlNoticesSink 'Microsoft.DataFactory/factories/datasets@2018-06-01' = {
+  parent: dataFactory
+  name: 'SqlNoticesSink'
+  properties: {
+    type: 'AzureSqlTable'
+    linkedServiceName: {
+      referenceName: sqlLinkedService.name
+      type: 'LinkedServiceReference'
+    }
+    typeProperties: {
+      schema: 'dbo'
+      table: 'notices'
+    }
+    description: 'Unified landing table dbo.notices in noticesdb'
+    folder: {
+      name: 'Sinks'
+    }
+  }
+}
+
 // ============================================================================
-// Pipelines
-// ============================================================================
+
+// Pipeline: Land parsed notices to Azure SQL (invoked on-demand by parser Logic App)
+resource landParsedToSqlPipeline 'Microsoft.DataFactory/factories/pipelines@2018-06-01' = {
+  parent: dataFactory
+  name: 'LandParsedToSql'
+  properties: {
+    description: 'Copies parsed notice JSON into dbo.notices via upsert. Triggered per-file by the parser Logic App; if sourcePath is empty, runs a recursive backfill over parsed/**/*.json.'
+    parameters: {
+      sourceFolder: {
+        type: 'String'
+        defaultValue: 'parsed'
+      }
+      fileName: {
+        type: 'String'
+        defaultValue: ''
+      }
+    }
+    activities: [
+      {
+        name: 'CopyParsedJsonToSql'
+        type: 'Copy'
+        typeProperties: {
+          source: {
+            type: 'JsonSource'
+            storeSettings: {
+              type: 'AzureBlobStorageReadSettings'
+              recursive: '@empty(pipeline().parameters.fileName)'
+              wildcardFolderPath: null
+              wildcardFileName: '@if(empty(pipeline().parameters.fileName), \'*.json\', \'\')'
+              enablePartitionDiscovery: false
+            }
+            formatSettings: {
+              type: 'JsonReadSettings'
+            }
+          }
+          sink: {
+            type: 'AzureSqlSink'
+            writeBehavior: 'upsert'
+            upsertSettings: {
+              useTempDB: true
+              keys: [
+                'source'
+                'pipeline'
+                'noticeId'
+              ]
+            }
+            sqlWriterUseTableLock: false
+            disableMetricsCollection: false
+          }
+          enableStaging: false
+          translator: {
+            type: 'TabularTranslator'
+            mappings: [
+              { source: { path: '$[\'metadata\'][\'source\']' }, sink: { name: 'source', type: 'String' } }
+              { source: { path: '$[\'metadata\'][\'pipeline\']' }, sink: { name: 'pipeline', type: 'String' } }
+              { source: { path: '$[\'metadata\'][\'pipelineName\']' }, sink: { name: 'pipelineName', type: 'String' } }
+              { source: { path: '$[\'metadata\'][\'noticeId\']' }, sink: { name: 'noticeId', type: 'String' } }
+              { source: { path: '$[\'metadata\'][\'rawBlobPath\']' }, sink: { name: 'rawBlobPath', type: 'String' } }
+              { source: { path: '$[\'metadata\'][\'parsedAt\']' }, sink: { name: 'parsedAt', type: 'DateTime' } }
+              { source: { path: '$[\'metadata\'][\'foundryModel\']' }, sink: { name: 'foundryModel', type: 'String' } }
+              { source: { path: '$[\'metadata\'][\'tokensUsed\']' }, sink: { name: 'tokensUsed', type: 'Int32' } }
+              { source: { path: '$[\'extracted\'][\'title\']' }, sink: { name: 'title', type: 'String' } }
+              { source: { path: '$[\'extracted\'][\'noticeType\']' }, sink: { name: 'noticeType', type: 'String' } }
+              { source: { path: '$[\'extracted\'][\'status\']' }, sink: { name: 'status', type: 'String' } }
+              { source: { path: '$[\'extracted\'][\'isCritical\']' }, sink: { name: 'isCritical', type: 'Boolean' } }
+              { source: { path: '$[\'extracted\'][\'postedDate\']' }, sink: { name: 'postedDate', type: 'DateTime' } }
+              { source: { path: '$[\'extracted\'][\'effectiveDate\']' }, sink: { name: 'effectiveDate', type: 'DateTime' } }
+              { source: { path: '$[\'extracted\'][\'endDate\']' }, sink: { name: 'endDate', type: 'DateTime' } }
+              { source: { path: '$[\'extracted\'][\'description\']' }, sink: { name: 'description', type: 'String' } }
+              { source: { path: '$[\'extracted\'][\'affectedLocations\']' }, sink: { name: 'affectedLocations', type: 'String' } }
+              { source: { path: '$[\'extracted\'][\'responseRequired\']' }, sink: { name: 'responseRequired', type: 'Boolean' } }
+            ]
+            collectionReference: ''
+            mapComplexValuesToString: true
+          }
+        }
+        inputs: [
+          {
+            referenceName: parsedJsonDataset.name
+            type: 'DatasetReference'
+            parameters: {
+              sourceFolder: '@pipeline().parameters.sourceFolder'
+              fileName: '@pipeline().parameters.fileName'
+            }
+          }
+        ]
+        outputs: [
+          {
+            referenceName: sqlNoticesSink.name
+            type: 'DatasetReference'
+          }
+        ]
+        policy: {
+          retry: 2
+          retryIntervalInSeconds: 30
+          timeout: '00:15:00'
+        }
+      }
+      {
+        name: 'FlattenAffectedLocations'
+        description: 'After parent rows land in dbo.notices, calls the SQL stored proc that uses OPENJSON to fan out affectedLocations into dbo.notice_locations. Idempotent per (source,pipeline,noticeId) when called per file; rebuilds full table for backfill.'
+        type: 'SqlServerStoredProcedure'
+        dependsOn: [
+          {
+            activity: 'CopyParsedJsonToSql'
+            dependencyConditions: [ 'Succeeded' ]
+          }
+        ]
+        linkedServiceName: {
+          referenceName: sqlLinkedService.name
+          type: 'LinkedServiceReference'
+        }
+        typeProperties: {
+          storedProcedureName: '[dbo].[usp_FlattenAffectedLocations]'
+          storedProcedureParameters: {
+            source: {
+              value: '@if(empty(pipeline().parameters.fileName), \'\', split(pipeline().parameters.sourceFolder, \'/\')[1])'
+              type: 'String'
+            }
+            pipeline: {
+              value: '@if(empty(pipeline().parameters.fileName), \'\', split(pipeline().parameters.sourceFolder, \'/\')[2])'
+              type: 'String'
+            }
+            noticeId: {
+              value: '@if(empty(pipeline().parameters.fileName), \'\', replace(pipeline().parameters.fileName, \'.json\', \'\'))'
+              type: 'String'
+            }
+          }
+        }
+        policy: {
+          retry: 2
+          retryIntervalInSeconds: 30
+          timeout: '00:15:00'
+        }
+      }
+    ]
+    annotations: [
+      'CriticalNotices'
+      'SqlLanding'
+    ]
+    folder: {
+      name: 'Ingestion'
+    }
+  }
+}
 
 // Pipeline: Ingest to Fabric (copies parsed notices to Fabric Lakehouse)
 resource ingestToFabricPipeline 'Microsoft.DataFactory/factories/pipelines@2018-06-01' = {
