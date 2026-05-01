@@ -5,6 +5,10 @@
   "parameters": {
     "storageAccountName": {
       "type": "String"
+    },
+    "parserCallbackUrl": {
+      "type": "String",
+      "description": "HTTP trigger URL for the parser workflow. Populated post-deploy via Logic Apps listCallbackUrl."
     }
   },
   "triggers": {
@@ -126,6 +130,24 @@
           "assetId": "@{coalesce(triggerBody()?['assetId'], '')}"
         }
       },
+      "runAfter": {
+        "Create_Blob_RawContent": ["Succeeded"]
+      }
+    },
+    "Call_Parser_Workflow": {
+      "type": "Http",
+      "description": "Fire-and-forget: trigger the parser immediately after raw blob is written. Parser processes asynchronously; downloader does not wait for result.",
+      "inputs": {
+        "method": "POST",
+        "uri": "@{parameters('parserCallbackUrl')}",
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "rawBlobPath": "raw/@{triggerBody()?['source']}/@{variables('dateFolder')}/@{triggerBody()?['pipeline']}/@{triggerBody()?['noticeId']}.html"
+        }
+      },
+      "retryPolicy": { "type": "none" },
       "runAfter": {
         "Create_Blob_RawContent": ["Succeeded"]
       }
