@@ -4,8 +4,8 @@
   "metadata": {
     "_generator": {
       "name": "bicep",
-      "version": "0.41.2.15936",
-      "templateHash": "8275181884069336436"
+      "version": "0.42.1.51946",
+      "templateHash": "3999102823458329736"
     }
   },
   "parameters": {
@@ -83,13 +83,39 @@
       "metadata": {
         "description": "Foundry account name"
       }
+    },
+    "sqlServerName": {
+      "type": "string",
+      "defaultValue": "sql-dte-noticeapp-eus2-mx01",
+      "metadata": {
+        "description": "SQL logical server name (must be globally unique)"
+      }
+    },
+    "sqlDatabaseName": {
+      "type": "string",
+      "defaultValue": "noticesdb",
+      "metadata": {
+        "description": "SQL database name for parsed notice landing"
+      }
+    },
+    "sqlAdminAadObjectId": {
+      "type": "string",
+      "metadata": {
+        "description": "AAD object ID granted as SQL AAD admin (user/group/SP)"
+      }
+    },
+    "sqlAdminAadLoginName": {
+      "type": "string",
+      "metadata": {
+        "description": "AAD login name shown in portal for the SQL AAD admin"
+      }
     }
   },
   "resources": [
     {
       "type": "Microsoft.Authorization/roleAssignments",
       "apiVersion": "2022-04-01",
-      "name": "[guid(resourceGroup().id, parameters('storageAccountName'), parameters('logicAppName'), 'StorageBlobDataOwner')]",
+      "name": "[guid(resourceGroup().id, parameters('storageAccountName'), parameters('logicAppName'), 'standard', 'StorageBlobDataOwner')]",
       "properties": {
         "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'b7e6dc6d-f1e8-4753-8033-0f276bb0955b')]",
         "principalId": "[reference(resourceId('Microsoft.Resources/deployments', 'logicapp-standard-deployment'), '2025-04-01').outputs.logicAppPrincipalId.value]",
@@ -102,7 +128,7 @@
     {
       "type": "Microsoft.Authorization/roleAssignments",
       "apiVersion": "2022-04-01",
-      "name": "[guid(resourceGroup().id, parameters('keyVaultName'), parameters('logicAppName'), 'KeyVaultSecretsUser')]",
+      "name": "8ab80e73-28e2-5c85-82f3-a79179c91441",
       "properties": {
         "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '4633458b-17de-408a-b874-0445c86b69e6')]",
         "principalId": "[reference(resourceId('Microsoft.Resources/deployments', 'logicapp-standard-deployment'), '2025-04-01').outputs.logicAppPrincipalId.value]",
@@ -115,7 +141,7 @@
     {
       "type": "Microsoft.Authorization/roleAssignments",
       "apiVersion": "2022-04-01",
-      "name": "[guid(resourceGroup().id, parameters('foundryAccountName'), parameters('logicAppName'), 'CognitiveServicesUser')]",
+      "name": "fdb87f43-7023-5260-92b4-53db918b6848",
       "properties": {
         "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'a97b65f3-24c7-4388-baec-2e87135dc908')]",
         "principalId": "[reference(resourceId('Microsoft.Resources/deployments', 'logicapp-standard-deployment'), '2025-04-01').outputs.logicAppPrincipalId.value]",
@@ -152,6 +178,19 @@
       ]
     },
     {
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "name": "[guid(resourceGroup().id, parameters('dataFactoryName'), parameters('logicAppName'), 'DataFactoryContributor')]",
+      "properties": {
+        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '673868aa-7521-48a0-acc6-0f60742d39f5')]",
+        "principalId": "[reference(resourceId('Microsoft.Resources/deployments', 'logicapp-standard-deployment'), '2025-04-01').outputs.logicAppPrincipalId.value]",
+        "principalType": "ServicePrincipal"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', 'logicapp-standard-deployment')]"
+      ]
+    },
+    {
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2025-04-01",
       "name": "vnet-deployment",
@@ -177,8 +216,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.41.2.15936",
-              "templateHash": "11763349182915157573"
+              "version": "0.42.1.51946",
+              "templateHash": "2869694928229560665"
             }
           },
           "parameters": {
@@ -410,8 +449,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.41.2.15936",
-              "templateHash": "3653528514909508934"
+              "version": "0.42.1.51946",
+              "templateHash": "2385653846720109891"
             }
           },
           "parameters": {
@@ -613,8 +652,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.41.2.15936",
-              "templateHash": "18310568277298712456"
+              "version": "0.42.1.51946",
+              "templateHash": "14039274805143203942"
             }
           },
           "parameters": {
@@ -790,8 +829,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.41.2.15936",
-              "templateHash": "11758431147674149375"
+              "version": "0.42.1.51946",
+              "templateHash": "17718977421838592509"
             }
           },
           "parameters": {
@@ -857,7 +896,7 @@
                 "count": "[length(parameters('allowedSubnetIds'))]",
                 "input": {
                   "id": "[parameters('allowedSubnetIds')[copyIndex('virtualNetworkRules')]]",
-                  "action": "Allow"
+                  "ignoreMissingVnetServiceEndpoint": false
                 }
               }
             ]
@@ -1015,8 +1054,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.41.2.15936",
-              "templateHash": "3584539862872112974"
+              "version": "0.42.1.51946",
+              "templateHash": "10429604231524864095"
             }
           },
           "parameters": {
@@ -1369,6 +1408,9 @@
           "keyVaultUri": {
             "value": "[reference(resourceId('Microsoft.Resources/deployments', 'keyvault-deployment'), '2025-04-01').outputs.keyVaultUri.value]"
           },
+          "dataFactoryName": {
+            "value": "[parameters('dataFactoryName')]"
+          },
           "tags": {
             "value": "[parameters('tags')]"
           }
@@ -1379,8 +1421,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.41.2.15936",
-              "templateHash": "16461781969478428105"
+              "version": "0.42.1.51946",
+              "templateHash": "5319458170836340913"
             }
           },
           "parameters": {
@@ -1445,6 +1487,26 @@
               "type": "string",
               "metadata": {
                 "description": "Key Vault URI for secrets reference"
+              }
+            },
+            "subscriptionId": {
+              "type": "string",
+              "defaultValue": "[subscription().subscriptionId]",
+              "metadata": {
+                "description": "Subscription ID (for parser ADF createRun call)"
+              }
+            },
+            "resourceGroupName": {
+              "type": "string",
+              "defaultValue": "[resourceGroup().name]",
+              "metadata": {
+                "description": "Resource group name (for parser ADF createRun call)"
+              }
+            },
+            "dataFactoryName": {
+              "type": "string",
+              "metadata": {
+                "description": "Data Factory name (for parser ADF createRun call)"
               }
             }
           },
@@ -1541,6 +1603,18 @@
                       "value": "[parameters('keyVaultUri')]"
                     },
                     {
+                      "name": "SubscriptionId",
+                      "value": "[parameters('subscriptionId')]"
+                    },
+                    {
+                      "name": "ResourceGroupName",
+                      "value": "[parameters('resourceGroupName')]"
+                    },
+                    {
+                      "name": "DataFactoryName",
+                      "value": "[parameters('dataFactoryName')]"
+                    },
+                    {
                       "name": "WEBSITE_VNET_ROUTE_ALL",
                       "value": "1"
                     },
@@ -1631,6 +1705,12 @@
           },
           "tags": {
             "value": "[parameters('tags')]"
+          },
+          "sqlServerFqdn": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'sql-deployment'), '2025-04-01').outputs.sqlServerFqdn.value]"
+          },
+          "sqlDatabaseName": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'sql-deployment'), '2025-04-01').outputs.sqlDatabaseName.value]"
           }
         },
         "template": {
@@ -1639,8 +1719,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.41.2.15936",
-              "templateHash": "6787947514163294370"
+              "version": "0.42.1.51946",
+              "templateHash": "8207948382948411829"
             }
           },
           "parameters": {
@@ -1675,6 +1755,18 @@
               "defaultValue": "stdtenoticeappeus2mx01",
               "metadata": {
                 "description": "Storage account name for connection"
+              }
+            },
+            "sqlServerFqdn": {
+              "type": "string",
+              "metadata": {
+                "description": "SQL server FQDN for parsed notices landing (e.g. sql-xxx.database.windows.net)"
+              }
+            },
+            "sqlDatabaseName": {
+              "type": "string",
+              "metadata": {
+                "description": "SQL database name for parsed notices landing"
               }
             }
           },
@@ -1730,6 +1822,27 @@
               },
               "dependsOn": [
                 "[resourceId('Microsoft.DataFactory/factories', parameters('dataFactoryName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.DataFactory/factories/linkedservices",
+              "apiVersion": "2018-06-01",
+              "name": "[format('{0}/{1}', parameters('dataFactoryName'), 'AzureSqlDatabase_ManagedIdentity')]",
+              "properties": {
+                "type": "AzureSqlDatabase",
+                "typeProperties": {
+                  "connectionString": "[format('Server=tcp:{0},1433;Initial Catalog={1};Encrypt=true;Connection Timeout=30;', parameters('sqlServerFqdn'), parameters('sqlDatabaseName'))]",
+                  "authenticationType": "SystemAssignedManagedIdentity"
+                },
+                "connectVia": {
+                  "referenceName": "AutoResolveIntegrationRuntime",
+                  "type": "IntegrationRuntimeReference"
+                },
+                "description": "Landing target for parsed critical notices using ADF managed identity"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.DataFactory/factories', parameters('dataFactoryName'))]",
+                "[resourceId('Microsoft.DataFactory/factories/integrationRuntimes', parameters('dataFactoryName'), 'AutoResolveIntegrationRuntime')]"
               ]
             },
             {
@@ -1868,6 +1981,329 @@
               "dependsOn": [
                 "[resourceId('Microsoft.DataFactory/factories', parameters('dataFactoryName'))]",
                 "[resourceId('Microsoft.DataFactory/factories/linkedservices', parameters('dataFactoryName'), 'FabricLakehouse_Mock')]"
+              ]
+            },
+            {
+              "type": "Microsoft.DataFactory/factories/datasets",
+              "apiVersion": "2018-06-01",
+              "name": "[format('{0}/{1}', parameters('dataFactoryName'), 'ParsedNoticesJsonSource')]",
+              "properties": {
+                "type": "Json",
+                "linkedServiceName": {
+                  "referenceName": "AzureBlobStorage_ManagedIdentity",
+                  "type": "LinkedServiceReference"
+                },
+                "parameters": {
+                  "sourceFolder": {
+                    "type": "String",
+                    "defaultValue": "parsed"
+                  },
+                  "fileName": {
+                    "type": "String",
+                    "defaultValue": ""
+                  }
+                },
+                "typeProperties": {
+                  "location": {
+                    "type": "AzureBlobStorageLocation",
+                    "container": "critical-notices",
+                    "folderPath": {
+                      "value": "@dataset().sourceFolder",
+                      "type": "Expression"
+                    },
+                    "fileName": {
+                      "value": "@dataset().fileName",
+                      "type": "Expression"
+                    }
+                  }
+                },
+                "description": "Parsed notice JSON documents written by the parser Logic App",
+                "folder": {
+                  "name": "Sources"
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.DataFactory/factories/linkedservices', parameters('dataFactoryName'), 'AzureBlobStorage_ManagedIdentity')]",
+                "[resourceId('Microsoft.DataFactory/factories', parameters('dataFactoryName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.DataFactory/factories/datasets",
+              "apiVersion": "2018-06-01",
+              "name": "[format('{0}/{1}', parameters('dataFactoryName'), 'SqlNoticesSink')]",
+              "properties": {
+                "type": "AzureSqlTable",
+                "linkedServiceName": {
+                  "referenceName": "AzureSqlDatabase_ManagedIdentity",
+                  "type": "LinkedServiceReference"
+                },
+                "typeProperties": {
+                  "schema": "dbo",
+                  "table": "notices"
+                },
+                "description": "Unified landing table dbo.notices in noticesdb",
+                "folder": {
+                  "name": "Sinks"
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.DataFactory/factories', parameters('dataFactoryName'))]",
+                "[resourceId('Microsoft.DataFactory/factories/linkedservices', parameters('dataFactoryName'), 'AzureSqlDatabase_ManagedIdentity')]"
+              ]
+            },
+            {
+              "type": "Microsoft.DataFactory/factories/pipelines",
+              "apiVersion": "2018-06-01",
+              "name": "[format('{0}/{1}', parameters('dataFactoryName'), 'LandParsedToSql')]",
+              "properties": {
+                "description": "Copies parsed notice JSON into dbo.notices via upsert. Triggered per-file by the parser Logic App; if sourcePath is empty, runs a recursive backfill over parsed/**/*.json.",
+                "parameters": {
+                  "sourceFolder": {
+                    "type": "String",
+                    "defaultValue": "parsed"
+                  },
+                  "fileName": {
+                    "type": "String",
+                    "defaultValue": ""
+                  }
+                },
+                "activities": [
+                  {
+                    "name": "CopyParsedJsonToSql",
+                    "type": "Copy",
+                    "typeProperties": {
+                      "source": {
+                        "type": "JsonSource",
+                        "storeSettings": {
+                          "type": "AzureBlobStorageReadSettings",
+                          "recursive": "@empty(pipeline().parameters.fileName)",
+                          "wildcardFolderPath": null,
+                          "wildcardFileName": "@if(empty(pipeline().parameters.fileName), '*.json', '')",
+                          "enablePartitionDiscovery": false
+                        },
+                        "formatSettings": {
+                          "type": "JsonReadSettings"
+                        }
+                      },
+                      "sink": {
+                        "type": "AzureSqlSink",
+                        "writeBehavior": "upsert",
+                        "upsertSettings": {
+                          "useTempDB": true,
+                          "keys": [
+                            "source",
+                            "pipeline",
+                            "noticeId"
+                          ]
+                        },
+                        "sqlWriterUseTableLock": false,
+                        "disableMetricsCollection": false
+                      },
+                      "enableStaging": false,
+                      "translator": {
+                        "type": "TabularTranslator",
+                        "mappings": [
+                          {
+                            "source": {
+                              "path": "$['metadata']['source']"
+                            },
+                            "sink": {
+                              "name": "source",
+                              "type": "String"
+                            }
+                          },
+                          {
+                            "source": {
+                              "path": "$['metadata']['pipeline']"
+                            },
+                            "sink": {
+                              "name": "pipeline",
+                              "type": "String"
+                            }
+                          },
+                          {
+                            "source": {
+                              "path": "$['metadata']['pipelineName']"
+                            },
+                            "sink": {
+                              "name": "pipelineName",
+                              "type": "String"
+                            }
+                          },
+                          {
+                            "source": {
+                              "path": "$['metadata']['noticeId']"
+                            },
+                            "sink": {
+                              "name": "noticeId",
+                              "type": "String"
+                            }
+                          },
+                          {
+                            "source": {
+                              "path": "$['metadata']['rawBlobPath']"
+                            },
+                            "sink": {
+                              "name": "rawBlobPath",
+                              "type": "String"
+                            }
+                          },
+                          {
+                            "source": {
+                              "path": "$['metadata']['parsedAt']"
+                            },
+                            "sink": {
+                              "name": "parsedAt",
+                              "type": "DateTime"
+                            }
+                          },
+                          {
+                            "source": {
+                              "path": "$['metadata']['foundryModel']"
+                            },
+                            "sink": {
+                              "name": "foundryModel",
+                              "type": "String"
+                            }
+                          },
+                          {
+                            "source": {
+                              "path": "$['metadata']['tokensUsed']"
+                            },
+                            "sink": {
+                              "name": "tokensUsed",
+                              "type": "Int32"
+                            }
+                          },
+                          {
+                            "source": {
+                              "path": "$['extracted']['title']"
+                            },
+                            "sink": {
+                              "name": "title",
+                              "type": "String"
+                            }
+                          },
+                          {
+                            "source": {
+                              "path": "$['extracted']['noticeType']"
+                            },
+                            "sink": {
+                              "name": "noticeType",
+                              "type": "String"
+                            }
+                          },
+                          {
+                            "source": {
+                              "path": "$['extracted']['status']"
+                            },
+                            "sink": {
+                              "name": "status",
+                              "type": "String"
+                            }
+                          },
+                          {
+                            "source": {
+                              "path": "$['extracted']['isCritical']"
+                            },
+                            "sink": {
+                              "name": "isCritical",
+                              "type": "Boolean"
+                            }
+                          },
+                          {
+                            "source": {
+                              "path": "$['extracted']['postedDate']"
+                            },
+                            "sink": {
+                              "name": "postedDate",
+                              "type": "DateTime"
+                            }
+                          },
+                          {
+                            "source": {
+                              "path": "$['extracted']['effectiveDate']"
+                            },
+                            "sink": {
+                              "name": "effectiveDate",
+                              "type": "DateTime"
+                            }
+                          },
+                          {
+                            "source": {
+                              "path": "$['extracted']['endDate']"
+                            },
+                            "sink": {
+                              "name": "endDate",
+                              "type": "DateTime"
+                            }
+                          },
+                          {
+                            "source": {
+                              "path": "$['extracted']['description']"
+                            },
+                            "sink": {
+                              "name": "description",
+                              "type": "String"
+                            }
+                          },
+                          {
+                            "source": {
+                              "path": "$['extracted']['affectedLocations']"
+                            },
+                            "sink": {
+                              "name": "affectedLocations",
+                              "type": "String"
+                            }
+                          },
+                          {
+                            "source": {
+                              "path": "$['extracted']['responseRequired']"
+                            },
+                            "sink": {
+                              "name": "responseRequired",
+                              "type": "Boolean"
+                            }
+                          }
+                        ],
+                        "collectionReference": ""
+                      }
+                    },
+                    "inputs": [
+                      {
+                        "referenceName": "ParsedNoticesJsonSource",
+                        "type": "DatasetReference",
+                        "parameters": {
+                          "sourceFolder": "@pipeline().parameters.sourceFolder",
+                          "fileName": "@pipeline().parameters.fileName"
+                        }
+                      }
+                    ],
+                    "outputs": [
+                      {
+                        "referenceName": "SqlNoticesSink",
+                        "type": "DatasetReference"
+                      }
+                    ],
+                    "policy": {
+                      "retry": 2,
+                      "retryIntervalInSeconds": 30,
+                      "timeout": "00:15:00"
+                    }
+                  }
+                ],
+                "annotations": [
+                  "CriticalNotices",
+                  "SqlLanding"
+                ],
+                "folder": {
+                  "name": "Ingestion"
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.DataFactory/factories', parameters('dataFactoryName'))]",
+                "[resourceId('Microsoft.DataFactory/factories/datasets', parameters('dataFactoryName'), 'ParsedNoticesJsonSource')]",
+                "[resourceId('Microsoft.DataFactory/factories/datasets', parameters('dataFactoryName'), 'SqlNoticesSink')]"
               ]
             },
             {
@@ -2019,8 +2455,193 @@
         }
       },
       "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', 'sql-deployment')]",
         "[resourceId('Microsoft.Resources/deployments', 'storage-deployment')]"
       ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "sql-deployment",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "sqlServerName": {
+            "value": "[parameters('sqlServerName')]"
+          },
+          "sqlDatabaseName": {
+            "value": "[parameters('sqlDatabaseName')]"
+          },
+          "sqlAdminAadObjectId": {
+            "value": "[parameters('sqlAdminAadObjectId')]"
+          },
+          "sqlAdminAadLoginName": {
+            "value": "[parameters('sqlAdminAadLoginName')]"
+          },
+          "tags": {
+            "value": "[parameters('tags')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.42.1.51946",
+              "templateHash": "3651927364168909158"
+            }
+          },
+          "parameters": {
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure region"
+              }
+            },
+            "sqlServerName": {
+              "type": "string",
+              "metadata": {
+                "description": "SQL logical server name (must be globally unique)"
+              }
+            },
+            "sqlDatabaseName": {
+              "type": "string",
+              "defaultValue": "noticesdb",
+              "metadata": {
+                "description": "SQL database name"
+              }
+            },
+            "sqlAdminAadObjectId": {
+              "type": "string",
+              "metadata": {
+                "description": "AAD object ID granted as SQL AAD admin (a user, group, or SP)"
+              }
+            },
+            "sqlAdminAadLoginName": {
+              "type": "string",
+              "metadata": {
+                "description": "AAD login name shown in the portal for the SQL AAD admin"
+              }
+            },
+            "tags": {
+              "type": "object",
+              "defaultValue": {},
+              "metadata": {
+                "description": "Resource tags"
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Sql/servers",
+              "apiVersion": "2023-08-01-preview",
+              "name": "[parameters('sqlServerName')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "identity": {
+                "type": "SystemAssigned"
+              },
+              "properties": {
+                "administrators": {
+                  "administratorType": "ActiveDirectory",
+                  "azureADOnlyAuthentication": true,
+                  "principalType": "User",
+                  "login": "[parameters('sqlAdminAadLoginName')]",
+                  "sid": "[parameters('sqlAdminAadObjectId')]",
+                  "tenantId": "[subscription().tenantId]"
+                },
+                "publicNetworkAccess": "Enabled",
+                "minimalTlsVersion": "1.2"
+              }
+            },
+            {
+              "type": "Microsoft.Sql/servers/azureADOnlyAuthentications",
+              "apiVersion": "2023-08-01-preview",
+              "name": "[format('{0}/{1}', parameters('sqlServerName'), 'Default')]",
+              "properties": {
+                "azureADOnlyAuthentication": true
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Sql/servers', parameters('sqlServerName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Sql/servers/firewallRules",
+              "apiVersion": "2023-08-01-preview",
+              "name": "[format('{0}/{1}', parameters('sqlServerName'), 'AllowAllAzureServices')]",
+              "properties": {
+                "startIpAddress": "0.0.0.0",
+                "endIpAddress": "0.0.0.0"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Sql/servers', parameters('sqlServerName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Sql/servers/databases",
+              "apiVersion": "2023-08-01-preview",
+              "name": "[format('{0}/{1}', parameters('sqlServerName'), parameters('sqlDatabaseName'))]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "sku": {
+                "name": "GP_S_Gen5_1",
+                "tier": "GeneralPurpose",
+                "family": "Gen5",
+                "capacity": 1
+              },
+              "properties": {
+                "collation": "SQL_Latin1_General_CP1_CI_AS",
+                "maxSizeBytes": 1073741824,
+                "autoPauseDelay": 60,
+                "minCapacity": "[json('0.5')]",
+                "zoneRedundant": false,
+                "readScale": "Disabled",
+                "requestedBackupStorageRedundancy": "Local"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Sql/servers', parameters('sqlServerName'))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "sqlServerId": {
+              "type": "string",
+              "metadata": {
+                "description": "SQL server resource ID"
+              },
+              "value": "[resourceId('Microsoft.Sql/servers', parameters('sqlServerName'))]"
+            },
+            "sqlServerName": {
+              "type": "string",
+              "metadata": {
+                "description": "SQL server name"
+              },
+              "value": "[parameters('sqlServerName')]"
+            },
+            "sqlServerFqdn": {
+              "type": "string",
+              "metadata": {
+                "description": "SQL server fully qualified domain name"
+              },
+              "value": "[reference(resourceId('Microsoft.Sql/servers', parameters('sqlServerName')), '2023-08-01-preview').fullyQualifiedDomainName]"
+            },
+            "sqlDatabaseName": {
+              "type": "string",
+              "metadata": {
+                "description": "SQL database name"
+              },
+              "value": "[parameters('sqlDatabaseName')]"
+            }
+          }
+        }
+      }
     }
   ],
   "outputs": {
@@ -2107,6 +2728,20 @@
         "description": "Data Factory managed identity principal ID"
       },
       "value": "[reference(resourceId('Microsoft.Resources/deployments', 'datafactory-deployment'), '2025-04-01').outputs.dataFactoryPrincipalId.value]"
+    },
+    "sqlServerFqdn": {
+      "type": "string",
+      "metadata": {
+        "description": "SQL server FQDN"
+      },
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'sql-deployment'), '2025-04-01').outputs.sqlServerFqdn.value]"
+    },
+    "sqlDatabaseName": {
+      "type": "string",
+      "metadata": {
+        "description": "SQL database name"
+      },
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'sql-deployment'), '2025-04-01').outputs.sqlDatabaseName.value]"
     },
     "foundryEndpoint": {
       "type": "string",
