@@ -106,3 +106,34 @@ User: Jason Farrell
     - scanner: Running (scans Enbridge + TCeConnects every 15 min)
     - downloader: Enabled (HTTP trigger, called by scanner)
     - parser: Succeeded (polls raw/ folder every 5 min, parses with GPT-5.2)
+
+- 2026-04-19: Added redeploy/backfill automation under `infra/scripts`:
+  - `deploy-infra.ps1`, `build-deployment-package.ps1`, `deploy-workflows-standard.ps1`
+  - `postdeploy-seed-config.ps1` to upload `config/sites.json` safely
+  - `sql-init.ps1` to apply `notices.sql` + grants with AAD auth
+  - `backfill-blobs.ps1` uses AzCopy (`--overwrite=false`) and time-window copy for raw/indices/parsed
+  - Updated `infra/README.md` with end-to-end redeploy + backfill sequence
+
+- 2026-04-20: Added local seed package workflow scripts for offline export/import:
+  - `export-seed-package.ps1` and `import-seed-package.ps1` stage `notices/`, `config/`, optional `tracking/` + `discovery/`, recent index/raw/processed folders, and recent `parsed/` blobs.
+  - Default seed path is `infra\seed-package` (gitignored); import is non-overwrite by default.
+
+- 2026-04-20: Added one-command setup script `infra\scripts\setup-environment.ps1` orchestrating infra deploy, workflow package build/deploy, config upload, SQL init (when provided), and optional seed modes (`None`, `LocalSeed`, `Backfill`). Parameters include resource names, SQL target, seed path/source, days (default 10), subscription, and optional validation.
+
+- 2026-04-20: **Redeploy Safety Assessment**: Project is SAFE for redeployment with data preservation. Key findings:
+  - Bicep uses incremental mode (default) — stateful resources preserved
+  - Storage account and `critical-notices` container persisted during redeploy
+  - SQL database and schema preserved (AAD-only auth maintained)
+  - Role assignments use pinned GUIDs to avoid conflicts on redeploy
+  - Backfill scripts use `--overwrite=false` to protect newer data
+  - Validation script (`validate-redeploy.ps1`) checks environment health before/after
+  - Critical: `notices/` folder must be copied during backfill to prevent scanner from re-downloading all existing notices
+  - Documented single-command redeploy via `setup-environment.ps1` with `-SeedMode Backfill -Days 10`
+  - Step-by-step manual redeploy sequence also documented
+  - Key risks mitigated: Key Vault soft-delete collision, workflow definitions require separate deploy, config file must be reseeded, SQL schema managed externally
+  - Decision document: `.squad/decisions/inbox/grace-redeploy-safety.md`
+
+- 2026-05-12: **Orchestration Log Created**: Documented Grace's redeploy safety assessment in .squad/orchestration-log/2026-05-12T18-29-30Z-grace.md with assessment verdict (GO WITH CONDITIONS), key deliverables, findings, and recommendations. Merged decision documents into main decisions.md. Assessment remains current and ready for execution.
+
+- 2026-05-12: **SecurityControl: Ignore tag audit** — Verified that `SecurityControl: 'Ignore'` is already correctly propagated across the entire infrastructure. Tag is defined centrally in `main.bicep` (tags param default) and also explicitly set in `main.parameters.json`. All 9 modules (storage, keyvault, logicapp-standard, logicapp, datafactory, vnet, private-endpoints, sql, foundry) accept a `tags object` param and apply it via `tags: tags` or `union(tags, { ... })` on every taggable top-level resource. Child resources (blob containers, KV secrets, ADF linked services, SQL firewall rules, DNS zone groups) do not support tags in ARM and are correctly omitted. `deploy-infra.ps1` passes `--parameters $ParametersFile` only — no `--tags` flag at CLI level — so no script change was needed. Pattern: define once in main, pass through every module, use `union()` when a module adds its own supplemental tags. Decision document: `.squad/decisions/inbox/grace-security-tag.md`.
+
