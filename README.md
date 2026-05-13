@@ -107,27 +107,23 @@ Each `parsed/{source}/{pipeline}/{noticeId}.json` document contains:
 }
 ```
 
-The `parsed/` folder is the **handoff point to Microsoft Fabric** — the ADF `IngestToFabric` pipeline copies new files from this prefix into the Lakehouse. The parser is idempotent: a HEAD check against `parsed/{source}/{pipeline}/{noticeId}.json` causes already-processed raws to be skipped on subsequent runs.
+The `parsed/` folder is the **handoff point to Microsoft Fabric** — downstream Fabric pipelines ingest new files from this prefix into the Lakehouse. The parser is idempotent: a HEAD check against `parsed/{source}/{pipeline}/{noticeId}.json` causes already-processed raws to be skipped on subsequent runs.
 
 ## Infrastructure
 
-The solution deploys to Azure with VNet isolation:
-
 | Resource | Purpose |
 |----------|---------|
-| Logic Apps (Standard) | Scanner and downloader workflows |
-| Azure Blob Storage | Data lake for notices |
+| Logic Apps Standard | Scanner, downloader, and parser workflows |
+| Azure Blob Storage | Data lake for all notice data |
 | Azure Key Vault | Secrets management |
-| Azure AI Foundry | AI-powered HTML parsing (Phase 3) |
-| Azure Data Factory | Parsed → SQL landing (`LandParsedToSql`) and Fabric data movement |
-| Azure SQL Database | Relational landing for parsed notices (`noticesdb.dbo.notices`, serverless) |
+| Azure AI Foundry | AI-powered HTML parsing |
 | Virtual Network | Network isolation with private endpoints |
 
-**Estimated cost:** ~$180/month
+**Estimated cost:** ~$120/month
 
 ## Deployment
 
-This is a standalone Azure deployment — no external dependencies, no Fabric required to get started. Follow these steps in order.
+The entire solution — infrastructure, workflows, and seed data — deploys with a single PowerShell script.
 
 ### Prerequisites
 
@@ -135,275 +131,179 @@ This is a standalone Azure deployment — no external dependencies, no Fabric re
 |---|---|
 | Azure CLI ≥ 2.57 | `az version` — [install](https://learn.microsoft.com/cli/azure/install-azure-cli) |
 | Bicep CLI (bundled with Azure CLI) | `az bicep version` |
-| sqlcmd (for SQL post-deploy DDL) | `winget install Microsoft.Sqlcmd` or [download](https://learn.microsoft.com/sql/tools/sqlcmd/sqlcmd-utility) |
+| AzCopy v10 | Place `azcopy.exe` on your PATH — [download](https://learn.microsoft.com/azure/storage/common/storage-use-azcopy-v10) |
+| Node.js ≥ 18 | `node --version` — required to build workflow packages |
 | Azure subscription | Contributor + User Access Administrator on the target subscription |
-| Azure Active Directory | An AAD user or group object ID to use as the SQL admin |
 
-> **Note:** All resources are provisioned with AAD-only authentication. No passwords or connection strings are stored.
+> **Role note:** User Access Administrator is required because the deployment assigns the Logic App's managed identity to Key Vault and AI Foundry. All resources use Azure AD authentication — no passwords or connection strings are stored.
 
 ---
 
-### Step 1 — Clone and configure
+### Step 1 — Clone and authenticate
 
 ```bash
-git clone https://github.com/<org>/critical-notice-parsing.git
+git clone https://github.com/jasonfarrell-msft/dte-noticeapp-logicapps.git
 cd critical-notice-parsing
+
+az login
+az account set --subscription "<subscription-id>"
 ```
 
-Edit **`infra/main.parameters.json`** and replace the placeholder values for your environment:
+---
+
+### Step 2 — Configure parameters
+
+The default parameters file `infra/main.parameters.json` targets the `mx01` environment. To deploy to a **new environment**, create a new parameters file (e.g. `infra/main.parameters.mx02.json`) overriding all resource names:
 
 ```jsonc
 {
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
   "parameters": {
-    "location":             { "value": "eastus2" },          // Azure region
-    "storageAccountName":   { "value": "st<unique>eus2" },   // globally unique, 3-24 chars
-    "keyVaultName":         { "value": "kv-<name>-eus2" },   // globally unique
-    "logicAppName":         { "value": "logic-<name>-eus2" },
-    "dataFactoryName":      { "value": "adf-<name>-eus2" },
-    "sqlServerName":        { "value": "sql-<name>-eus2" },  // globally unique
-    "sqlDatabaseName":      { "value": "noticesdb" },
-    "sqlAdminAadObjectId":  { "value": "<your-aad-object-id>" },  // run: az ad signed-in-user show --query id -o tsv
-    "sqlAdminAadLoginName": { "value": "<your-upn@domain.com>" }
+    "storageAccountName":  { "value": "stdtenoticeappeus2mx02" },
+    "keyVaultName":        { "value": "kv-dte-noticeapp-eus2-mx02" },
+    "logicAppName":        { "value": "logic-dte-noticeapp-eus2-mx02" },
+    "appServicePlanName":  { "value": "asp-dte-noticeapp-eus2-mx02" },
+    "vnetName":            { "value": "vnet-dte-noticeapp-eus2-mx02" },
+    "foundryAccountName":  { "value": "foundry-dte-noticeapp-eus2-mx02" }
   }
 }
 ```
 
-To find your AAD object ID:
-
-```bash
-az ad signed-in-user show --query id -o tsv
-```
-
----
-
-### Step 2 — Authenticate and select subscription
-
-```bash
-az login
-az account set --subscription "<subscription-id>"
-
-# Verify you have Contributor on the target subscription
-az role assignment list \
-  --assignee $(az ad signed-in-user show --query id -o tsv) \
-  --subscription "<subscription-id>" \
-  --query "[?roleDefinitionName=='Contributor']" \
-  -o table
-```
+> All resource names must be **globally unique** across Azure. Storage account names are 3–24 lowercase alphanumeric characters (no hyphens).
 
 ---
 
 ### Step 3 — Create the resource group
 
-```bash
-az group create \
-  --name rg-dte-noticeapp-eus2-mx01 \
-  --location eastus2
+```powershell
+az group create --name rg-dte-noticeapp-eus2-mx02 --location eastus2
 ```
 
 ---
 
-### Step 4 — Preview the deployment (optional but recommended)
+### Step 4 — Run the deployment script
 
-```bash
-az deployment group what-if \
-  --resource-group rg-dte-noticeapp-eus2-mx01 \
-  --template-file infra/main.bicep \
-  --parameters infra/main.parameters.json
-```
+`setup-environment.ps1` is the single entry point. It deploys infrastructure, builds and uploads workflows, seeds configuration, and optionally imports data and validates the result.
 
-Review the planned changes. Expect ~20 resources: VNet, storage account, Key Vault, App Service Plan, Logic Apps Standard, Data Factory, AI Foundry (Cognitive Services), SQL server + database, private endpoints, and role assignments.
-
----
-
-### Step 5 — Deploy infrastructure
-
-```bash
-az deployment group create \
-  --resource-group rg-dte-noticeapp-eus2-mx01 \
-  --template-file infra/main.bicep \
-  --parameters infra/main.parameters.json \
-  --only-show-errors
-```
-
-Typical deploy time: **8–12 minutes**. On success, `provisioningState` returns `Succeeded`.
-
-> **Subscription-level role assignments:** The template assigns the Logic App's managed identity `Data Factory Contributor` on the ADF resource (so the parser can trigger pipelines). If the deploying principal lacks `Microsoft.Authorization/roleAssignments/write`, remove the role assignment block from `main.bicep` and add it manually after deploy:
->
-> ```bash
-> ADF_ID=$(az datafactory show -g rg-dte-noticeapp-eus2-mx01 -n adf-<name>-eus2 --query id -o tsv)
-> PARSER_MI=$(az resource show -g rg-dte-noticeapp-eus2-mx01 --resource-type Microsoft.Web/sites -n logic-<name>-eus2 --query identity.principalId -o tsv)
-> az role assignment create --role "Data Factory Contributor" --assignee $PARSER_MI --scope $ADF_ID
-> ```
-
----
-
-### Step 6 — Apply SQL DDL and grants (one-time, post-deploy)
-
-The SQL database is provisioned but empty. Run DDL as the AAD admin you set in `sqlAdminAadObjectId`.
-
-> **`sqlcmd` AAD authentication note:** Windows Integrated Authentication (`-G` flag) requires the Azure CLI session user to match the SQL AAD admin. If you see `Login failed` with `-G`, use the PowerShell workaround below.
-
-**Option A — sqlcmd (simplest if auth works)**
-
-```bash
-SQL_SERVER="sql-<name>-eus2.database.windows.net"
-
-# Create tables and stored proc
-sqlcmd -S $SQL_SERVER -d noticesdb -G -i infra/sql/notices.sql
-
-# Grant ADF managed identity access
-ADF_NAME="adf-<name>-eus2"
-sed "s/<ADF_NAME>/$ADF_NAME/g" infra/sql/grants.sql | \
-  sqlcmd -S $SQL_SERVER -d noticesdb -G
-```
-
-**Option B — PowerShell with access token (more reliable)**
+#### Deploy infrastructure and workflows only (no seed data)
 
 ```powershell
-$server   = "sql-<name>-eus2.database.windows.net"
-$adfName  = "adf-<name>-eus2"
-$token    = (az account get-access-token --resource https://database.windows.net --query accessToken -o tsv)
-
-Add-Type -AssemblyName System.Data
-$conn = New-Object System.Data.SqlClient.SqlConnection(
-  "Server=tcp:$server,1433;Initial Catalog=noticesdb;Encrypt=True;TrustServerCertificate=False;")
-$conn.AccessToken = $token
-$conn.Open()
-
-# Apply DDL (notices.sql + grants.sql)
-foreach ($file in @("infra\sql\notices.sql", "infra\sql\grants.sql")) {
-  $sql = (Get-Content -Raw $file) -replace '<ADF_NAME>', $adfName
-  foreach ($batch in ($sql -split "(?im)^\s*GO\s*$")) {
-    if ($batch.Trim()) {
-      $cmd = $conn.CreateCommand(); $cmd.CommandText = $batch
-      [void]$cmd.ExecuteNonQuery()
-    }
-  }
-}
-$conn.Close()
-Write-Host "DDL applied successfully"
+.\infra\scripts\setup-environment.ps1 `
+  -ResourceGroupName rg-dte-noticeapp-eus2-mx02 `
+  -StorageAccountName stdtenoticeappeus2mx02 `
+  -LogicAppName logic-dte-noticeapp-eus2-mx02 `
+  -ParametersFile .\infra\main.parameters.mx02.json
 ```
 
----
+#### Deploy with seed data from the local seed package
 
-### Step 7 — Upload the site registry
-
-The scanner reads the site registry from blob storage at runtime. Upload the seed file:
-
-```bash
-az storage blob upload \
-  --account-name st<unique>eus2 \
-  --container-name critical-notices \
-  --name config/sites.json \
-  --file infra/config/sites.json \
-  --auth-mode login \
-  --overwrite
-```
-
----
-
-### Step 8 — Deploy Logic App workflows
-
-The Logic App workflows are defined as JSON files under `infra/workflows/`. Upload them via the Azure CLI or directly through the Logic Apps portal.
-
-First, rebuild the scanner workflow (embeds the inline discovery JS):
-
-```bash
-node infra/workflows/_build_scanner.js
-node infra/workflows/_build_parser.js
-```
-
-Then upload each workflow definition:
-
-```bash
-LOGIC_APP="logic-<name>-eus2"
-RG="rg-dte-noticeapp-eus2-mx01"
-
-for wf in scanner downloader parser; do
-  az logicapp workflow create \
-    --resource-group $RG \
-    --name $LOGIC_APP \
-    --workflow-name $wf \
-    --definition @infra/workflows/${wf}.json
-done
-```
-
-> Alternatively, open the Logic App in the Azure portal, navigate to **Workflows**, and use the **Code view** to paste each JSON definition.
-
----
-
-### Step 9 — Smoke test
-
-**Test ADF pipeline (backfill):**
-
-```bash
-az datafactory pipeline create-run \
-  --resource-group rg-dte-noticeapp-eus2-mx01 \
-  --factory-name adf-<name>-eus2 \
-  --name LandParsedToSql \
-  --parameters '{"sourceFolder":"parsed","fileName":""}'
-```
-
-Or via REST (more reliable when `az datafactory` times out):
+This is the recommended approach for a new environment. The `seed-package/` folder contains a snapshot of all data from the production storage account.
 
 ```powershell
-$mgmtToken = (az account get-access-token --resource https://management.azure.com --query accessToken -o tsv)
-$sub = "<subscription-id>"
-$rg  = "rg-dte-noticeapp-eus2-mx01"
-$adf = "adf-<name>-eus2"
-
-$resp = Invoke-RestMethod `
-  -Uri "https://management.azure.com/subscriptions/$sub/resourceGroups/$rg/providers/Microsoft.DataFactory/factories/$adf/pipelines/LandParsedToSql/createRun?api-version=2018-06-01" `
-  -Method Post `
-  -Headers @{ Authorization = "Bearer $mgmtToken"; "Content-Type" = "application/json" } `
-  -Body '{"sourceFolder":"parsed","fileName":""}'
-
-Write-Host "Run ID: $($resp.runId)"
+.\infra\scripts\setup-environment.ps1 `
+  -ResourceGroupName rg-dte-noticeapp-eus2-mx02 `
+  -StorageAccountName stdtenoticeappeus2mx02 `
+  -LogicAppName logic-dte-noticeapp-eus2-mx02 `
+  -ParametersFile .\infra\main.parameters.mx02.json `
+  -SeedMode LocalSeed `
+  -Days 6 `
+  -RunValidation
 ```
 
-**Verify SQL landing:**
+#### Deploy with live backfill from another storage account
 
 ```powershell
-$token = (az account get-access-token --resource https://database.windows.net --query accessToken -o tsv)
-$conn = New-Object System.Data.SqlClient.SqlConnection(
-  "Server=tcp:sql-<name>-eus2.database.windows.net,1433;Initial Catalog=noticesdb;Encrypt=True;TrustServerCertificate=False;")
-$conn.AccessToken = $token; $conn.Open()
-$cmd = $conn.CreateCommand()
-$cmd.CommandText = "SELECT COUNT(*) AS notices FROM dbo.notices; SELECT COUNT(*) AS locations FROM dbo.notice_locations;"
-$rdr = $cmd.ExecuteReader()
-while ($rdr.Read()) { Write-Host "$($rdr.GetName(0)) = $($rdr.GetValue(0))" }
-$conn.Close()
+.\infra\scripts\setup-environment.ps1 `
+  -ResourceGroupName rg-dte-noticeapp-eus2-mx02 `
+  -StorageAccountName stdtenoticeappeus2mx02 `
+  -LogicAppName logic-dte-noticeapp-eus2-mx02 `
+  -ParametersFile .\infra\main.parameters.mx02.json `
+  -SeedMode Backfill `
+  -SourceStorageAccountName stdtenoticeappeus2mx01 `
+  -SourceResourceGroupName rg-dte-noticeapp-eus2-mx01 `
+  -Days 6 `
+  -RunValidation
 ```
 
-Expected output: `notices = <N>`, `locations = <N>` (populated once the parser has run at least once).
+**Parameters:**
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `-ResourceGroupName` | ✅ | Target resource group (must exist) |
+| `-StorageAccountName` | ✅ | Storage account name as declared in parameters file |
+| `-LogicAppName` | ✅ | Logic App name as declared in parameters file |
+| `-ParametersFile` | | Path to parameters JSON (default: `infra/main.parameters.json`) |
+| `-SeedMode` | | `None` (default), `LocalSeed`, or `Backfill` |
+| `-Days` | | Days of historical data to seed/backfill (default: 10) |
+| `-SeedPath` | | Path to local seed package (default: `infra/seed-package`) |
+| `-SourceStorageAccountName` | | Required when `-SeedMode Backfill` |
+| `-SourceResourceGroupName` | | Resource group of source storage (Backfill mode) |
+| `-RunValidation` | | Run post-deploy validation checks after seeding |
+| `-AllowCallerIp` | | Temporarily add caller's public IP to storage firewall rules |
+| `-SubscriptionId` | | Override the active subscription |
+
+Typical deploy time: **10–15 minutes** (infrastructure 8–12 min + workflow deploy 1–2 min).
 
 ---
 
-### Step 10 — Enable the scanner trigger
+### Step 5 — Enable the scanner trigger
 
-In the Azure portal, navigate to **Logic Apps → logic-\<name\>-eus2 → Workflows → scanner → Designer** and **enable** the recurrence trigger. It polls every 15 minutes.
+After deployment the scanner workflow trigger is disabled by default. Enable it in the Azure portal:
 
-Alternatively via CLI:
+**Azure Portal → Logic Apps → `logic-<name>-eus2` → Workflows → scanner → Overview → Enable**
 
-```bash
-az logicapp workflow show \
-  --resource-group rg-dte-noticeapp-eus2-mx01 \
-  --name logic-<name>-eus2 \
-  --workflow-name scanner
-# Then toggle the trigger via the portal; CLI trigger-management is read-only for Standard plans.
+The scanner will then poll every 15 minutes.
+
+---
+
+### Validate an existing deployment
+
+Run the validation script independently at any time:
+
+```powershell
+.\infra\scripts\validate-redeploy.ps1 `
+  -ResourceGroupName rg-dte-noticeapp-eus2-mx02 `
+  -LogicAppName logic-dte-noticeapp-eus2-mx02 `
+  -StorageAccountName stdtenoticeappeus2mx02 `
+  -DaysRequired 6
+```
+
+On a fresh deployment (before any parser runs), add `-SkipResultsCheck` to skip the `parsed/` and `processed/raw/` checks:
+
+```powershell
+.\infra\scripts\validate-redeploy.ps1 `
+  -ResourceGroupName rg-dte-noticeapp-eus2-mx02 `
+  -LogicAppName logic-dte-noticeapp-eus2-mx02 `
+  -StorageAccountName stdtenoticeappeus2mx02 `
+  -DaysRequired 6 `
+  -SkipResultsCheck
+```
+
+---
+
+### Refresh the local seed package
+
+The seed package is a local snapshot used for `LocalSeed` deployments. To refresh it from a live storage account:
+
+```powershell
+$env:AZCOPY_AUTO_LOGIN_TYPE = 'AZCLI'
+.\infra\scripts\export-seed-package.ps1 `
+  -StorageAccountName stdtenoticeappeus2mx01 `
+  -Days 6
 ```
 
 ---
 
 ### Resource naming conventions
 
-All resource names in `main.parameters.json` must be **globally unique** across Azure (storage accounts, Key Vaults, SQL servers). A safe pattern:
-
 ```
-st{shortname}{region}{seq}        # storage: st<8chars max> — no hyphens
+st{shortname}{region}{seq}        # storage: max 24 chars, no hyphens
 kv-{project}-{region}-{seq}       # Key Vault
-sql-{project}-{region}-{seq}      # SQL server
-adf-{project}-{region}-{seq}      # Data Factory
+logic-{project}-{region}-{seq}    # Logic App
+asp-{project}-{region}-{seq}      # App Service Plan
+vnet-{project}-{region}-{seq}     # Virtual Network
+foundry-{project}-{region}-{seq}  # AI Foundry
 ```
 
 ---
@@ -416,27 +316,21 @@ adf-{project}-{region}-{seq}      # Data Factory
 | Azure Blob Storage | LRS Hot | ~$5 |
 | Azure Key Vault | Standard | ~$5 |
 | Azure AI Foundry | S0 | ~$20 (usage-based) |
-| Azure Data Factory | Serverless pipelines | ~$5 (usage-based) |
-| Azure SQL Database | GP_S_Gen5_1, serverless, 60-min auto-pause | ~$10 |
 | Virtual Network + Private Endpoints | — | ~$15 |
-| **Total** | | **~$135–$180/month** |
-
-Costs vary with notice volume. The scanner runs every 15 minutes but only downloads new notices; SQL auto-pauses after 60 minutes of inactivity.
+| **Total** | | **~$120/month** |
 
 ---
 
 ### Teardown
 
-```bash
-az group delete \
-  --name rg-dte-noticeapp-eus2-mx01 \
-  --yes --no-wait
+```powershell
+az group delete --name rg-dte-noticeapp-eus2-mx02 --yes --no-wait
 ```
 
-This removes all resources in the group. Key Vault has soft-delete enabled (90-day retention); if you redeploy with the same vault name, purge it first:
+Key Vault has soft-delete enabled (90-day retention). If you redeploy with the same vault name, purge it first:
 
-```bash
-az keyvault purge --name kv-<name>-eus2 --location eastus2
+```powershell
+az keyvault purge --name kv-dte-noticeapp-eus2-mx02 --location eastus2
 ```
 
 ## Configuration
@@ -510,7 +404,7 @@ The scanner is **registry-driven and self-discovering**. Each scan run:
 6. Dispatches via `Switch` on `parserModel` (`html-table-v1` | `json-grid-v1`) over the discovered BU list, fetches each notice list, HEAD-checks blob storage to skip already-captured notices.
 7. **Downloader** fetches new notices only and writes raw + canonical JSON.
 8. Tracking + scan-summary blobs are updated for observability.
-9. Data Factory pushes to Microsoft Fabric Lakehouse.
+9. Parsed data is available in the `parsed/` container prefix for downstream Microsoft Fabric ingestion.
 
 ### Adding a new site (client-friendly)
 
@@ -555,27 +449,36 @@ az storage blob upload \
 ```
 ├── infra/
 │   ├── main.bicep                    # Main deployment orchestration
-│   ├── main.parameters.json          # Environment parameters
+│   ├── main.json                     # Pre-compiled ARM template (used by deploy script)
+│   ├── main.parameters.json          # Default (mx01) environment parameters
+│   ├── main.parameters.mx02.json     # mx02 environment parameters (example)
 │   ├── config/
 │   │   └── sites.json                # Site registry (uploaded to blob; read by scanner at runtime)
-│   ├── sql/
-│   │   ├── notices.sql               # Idempotent DDL for dbo.notices (run post-deploy)
-│   │   └── grants.sql                # Grants ADF MI db_datareader/db_datawriter (run post-deploy)
+│   ├── seed-package/                 # Local snapshot of storage data for LocalSeed deployments
 │   ├── modules/
-│   │   ├── storage.bicep             # Blob Storage with lifecycle
+│   │   ├── storage.bicep             # Blob Storage with lifecycle policy
 │   │   ├── keyvault.bicep            # Key Vault with RBAC
 │   │   ├── logicapp-standard.bicep   # Logic Apps Standard
 │   │   ├── vnet.bicep                # Virtual Network
 │   │   ├── private-endpoints.bicep   # Private endpoints
-│   │   ├── foundry.bicep             # Azure AI Foundry
-│   │   ├── sql.bicep                 # Azure SQL serverless (parsed-notice landing)
-│   │   └── datafactory.bicep         # Data Factory (incl. LandParsedToSql pipeline)
+│   │   └── foundry.bicep             # Azure AI Foundry
+│   ├── scripts/
+│   │   ├── setup-environment.ps1     # Single entry point — full deploy + seed + validate
+│   │   ├── deploy-infra.ps1          # Deploys Bicep infrastructure
+│   │   ├── build-deployment-package.ps1  # Builds Logic App workflow zip
+│   │   ├── deploy-workflows-standard.ps1 # Zip-deploys workflows to Logic App
+│   │   ├── postdeploy-seed-config.ps1    # Creates container, uploads config blob
+│   │   ├── export-seed-package.ps1   # Exports data from a storage account to seed-package/
+│   │   ├── import-seed-package.ps1   # Imports seed-package/ to a storage account
+│   │   ├── backfill-blobs.ps1        # Live account-to-account blob copy
+│   │   ├── validate-redeploy.ps1     # Post-deploy validation checks
+│   │   └── validate-seed-package.ps1 # Validates local seed package completeness
 │   └── workflows/
-│       ├── scanner.json              # Scanner workflow (v4 — discovery + dispatch)
+│       ├── scanner.json              # Scanner workflow (discovery + dispatch)
 │       ├── discover-bus.js           # Inline JS used by scanner discovery action
 │       ├── _build_scanner.js         # Build helper: embeds discover-bus.js into scanner JSON
 │       ├── downloader.json           # Downloader workflow definition
-│       └── parser.json               # AI parser workflow (triggers ADF LandParsedToSql)
+│       └── parser.json               # AI parser workflow
 ├── infrastructure-plan.md            # Detailed architecture documentation
 └── README.md                         # This file
 ```
@@ -586,36 +489,12 @@ az storage blob upload \
 - [x] Unified storage schema design
 - [x] Multi-site scanner workflow (registry-driven, parserModel dispatch, auto-discovery)
 - [x] Multi-site downloader workflow
+- [x] AI parser workflow (Azure AI Foundry)
 - [x] VNet-isolated infrastructure (Bicep)
-- [x] Azure AI Foundry integration
-- [x] Initial deployment + smoke test (Enbridge 25 BUs, TCE 12 unique BUs verified)
-- [x] **Azure SQL landing** — `dbo.notices` in `noticesdb` on `sql-dte-noticeapp-eus2-mx01`, ADF `LandParsedToSql` pipeline triggered per-file by parser Logic App
-- [ ] Fabric Lakehouse connection
-- [ ] AI-powered HTML parsing (Phase 3)
-
-## Azure SQL Landing (Parsed → `dbo.notices`)
-
-After the parser writes a parsed JSON blob, it `POST`s to ADF's `createRun` REST endpoint using its system-assigned managed identity. The `LandParsedToSql` pipeline runs two activities:
-
-1. **CopyParsedJsonToSql** — upserts each notice into `dbo.notices` keyed on `(source, pipeline, noticeId)`. The `affectedLocations` JSON array is stored as a serialized JSON string via `mapComplexValuesToString`.
-2. **FlattenAffectedLocations** — calls `dbo.usp_FlattenAffectedLocations` which uses `OPENJSON` to fan the locations array out into `dbo.notice_locations` (one row per location per notice). Idempotent: scoped to the single notice for per-file runs; rebuilds the full child table for backfill runs.
-
-**Backfill trigger** (reprocesses all `parsed/**/*.json`):
-
-```bash
-az datafactory pipeline create-run \
-  --resource-group rg-dte-noticeapp-eus2-mx01 \
-  --factory-name adf-dte-noticeapp-eus2-mx01 \
-  --name LandParsedToSql \
-  --parameters '{"sourceFolder":"parsed","fileName":""}'
-```
-
-**Schema:**
-
-| Table | Rows (approx) | Notes |
-|---|---|---|
-| `dbo.notices` | 1 per notice | PK: `(source, pipeline, noticeId)` |
-| `dbo.notice_locations` | N per notice | FK → notices with cascade delete |
+- [x] Single-script deployment (`setup-environment.ps1`)
+- [x] Seed package export/import tooling
+- [x] Post-deploy validation script
+- [ ] Microsoft Fabric Lakehouse connection (handled separately)
 
 ## Documentation
 
