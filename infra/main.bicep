@@ -1,5 +1,5 @@
 // Main orchestration file for Critical Notice Ingestion Infrastructure
-// Deploys: VNet, Storage Account, Key Vault, Logic Apps Standard (VNet-isolated), Data Factory
+// Deploys: VNet, Storage Account, Key Vault, Logic Apps Standard (VNet-isolated)
 // Target Resource Group: rg-dte-noticeapp-eus2-mx01
 // Architecture: VNet-isolated with private endpoints (~$180/mo)
 
@@ -39,23 +39,8 @@ param appServicePlanName string = 'asp-dte-noticeapp-eus2-mx01'
 @description('VNet name')
 param vnetName string = 'vnet-dte-noticeapp-eus2-mx01'
 
-@description('Data Factory name')
-param dataFactoryName string = 'adf-dte-noticeapp-eus2-mx01'
-
 @description('Foundry account name')
 param foundryAccountName string = 'cog-dte-noticeapp-eus2-mx01'
-
-@description('SQL logical server name (must be globally unique)')
-param sqlServerName string = 'sql-dte-noticeapp-eus2-mx01'
-
-@description('SQL database name for parsed notice landing')
-param sqlDatabaseName string = 'noticesdb'
-
-@description('AAD object ID granted as SQL AAD admin (user/group/SP)')
-param sqlAdminAadObjectId string
-
-@description('AAD login name shown in portal for the SQL AAD admin')
-param sqlAdminAadLoginName string
 
 // ============================================================================
 // Module Deployments
@@ -71,15 +56,14 @@ module vnet 'modules/vnet.bicep' = {
   }
 }
 
-// 2. Storage Account (with VNet restrictions - allow service endpoints)
+// 2. Storage Account (public network access enabled; SecurityControl=Ignore tag documents exception)
 module storage 'modules/storage.bicep' = {
   name: 'storage-deployment'
   params: {
     location: location
     storageAccountName: storageAccountName
     tags: tags
-    // VNet isolation parameters
-    enableVnetRestrictions: true
+    enableVnetRestrictions: false
     allowedSubnetIds: [
       vnet.outputs.logicAppsSubnetId
     ]
@@ -156,7 +140,6 @@ module logicAppStandard 'modules/logicapp-standard.bicep' = {
     foundryDeploymentName: foundry.outputs.deploymentName
     vnetIntegrationSubnetId: vnet.outputs.logicAppsSubnetId
     keyVaultUri: keyVault.outputs.keyVaultUri
-    dataFactoryName: dataFactoryName
     tags: tags
   }
   dependsOn: [
@@ -166,32 +149,6 @@ module logicAppStandard 'modules/logicapp-standard.bicep' = {
     keyVault
     privateEndpoints
   ]
-}
-
-// 7. Data Factory (keeps public access for now - ADF doesn't fully support PE in all configs)
-module dataFactory 'modules/datafactory.bicep' = {
-  name: 'datafactory-deployment'
-  params: {
-    location: location
-    dataFactoryName: dataFactoryName
-    storageAccountId: storage.outputs.storageAccountId
-    tags: tags
-    sqlServerFqdn: sql.outputs.sqlServerFqdn
-    sqlDatabaseName: sql.outputs.sqlDatabaseName
-  }
-}
-
-// 8. Azure SQL (serverless, public endpoint for POC) -- landing target for parsed notices
-module sql 'modules/sql.bicep' = {
-  name: 'sql-deployment'
-  params: {
-    location: location
-    sqlServerName: sqlServerName
-    sqlDatabaseName: sqlDatabaseName
-    sqlAdminAadObjectId: sqlAdminAadObjectId
-    sqlAdminAadLoginName: sqlAdminAadLoginName
-    tags: tags
-  }
 }
 
 // ============================================================================
@@ -213,9 +170,11 @@ resource logicAppStorageBlobRole 'Microsoft.Authorization/roleAssignments@2022-0
 
 // Key Vault Secrets User for Logic App Standard
 // Role ID: 4633458b-17de-408a-b874-0445c86b69e6
-// Pinned to existing GUID from previous deployment
+// Pinned GUID for prod only; deterministic guid() for non-prod
 resource logicAppKeyVaultRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: '8ab80e73-28e2-5c85-82f3-a79179c91441'
+  name: environment == 'prod' 
+    ? '8ab80e73-28e2-5c85-82f3-a79179c91441' 
+    : guid(resourceGroup().id, logicAppName, 'KeyVaultSecretsUser')
   scope: resourceGroup()
   properties: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '4633458b-17de-408a-b874-0445c86b69e6')
@@ -226,50 +185,14 @@ resource logicAppKeyVaultRole 'Microsoft.Authorization/roleAssignments@2022-04-0
 
 // Cognitive Services User role for Logic App Standard (to call Foundry)
 // Role ID: a97b65f3-24c7-4388-baec-2e87135dc908
-// Pinned to existing GUID from previous deployment
+// Pinned GUID for prod only; deterministic guid() for non-prod
 resource logicAppFoundryRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: 'fdb87f43-7023-5260-92b4-53db918b6848'
+  name: environment == 'prod' 
+    ? 'fdb87f43-7023-5260-92b4-53db918b6848' 
+    : guid(resourceGroup().id, logicAppName, foundryAccountName, 'CognitiveServicesUser')
   scope: resourceGroup()
   properties: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'a97b65f3-24c7-4388-baec-2e87135dc908')
-    principalId: logicAppStandard.outputs.logicAppPrincipalId
-    principalType: 'ServicePrincipal'
-  }
-}
-
-// Storage Blob Data Contributor role for Data Factory
-resource adfStorageRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(resourceGroup().id, storageAccountName, dataFactoryName, 'StorageBlobDataContributor')
-  scope: resourceGroup()
-  properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'ba92f5b4-2d11-453d-a403-e96b0029c9fe')
-    principalId: dataFactory.outputs.dataFactoryPrincipalId
-    principalType: 'ServicePrincipal'
-  }
-}
-
-// Key Vault Secrets User for Data Factory
-// NOTE: This role assignment already exists in prod with a non-standard name.
-// Role assignment names must be deploy-time constants, so we pin to the existing GUID to avoid
-// RoleAssignmentExists failures on redeploy.
-resource adfKeyVaultRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: 'd01069f8-e69b-5b52-b262-7dc8ae066825'
-  scope: resourceGroup()
-  properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '4633458b-17de-408a-b874-0445c86b69e6')
-    principalId: dataFactory.outputs.dataFactoryPrincipalId
-    principalType: 'ServicePrincipal'
-  }
-}
-
-// Data Factory Contributor for parser Logic App (so parser can invoke
-// LandParsedToSql/createRun via REST after each successful parsed-blob write)
-// Role ID: 673868aa-7521-48a0-acc6-0f60742d39f5
-resource parserAdfRunnerRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(resourceGroup().id, dataFactoryName, logicAppName, 'DataFactoryContributor')
-  scope: resourceGroup()
-  properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '673868aa-7521-48a0-acc6-0f60742d39f5')
     principalId: logicAppStandard.outputs.logicAppPrincipalId
     principalType: 'ServicePrincipal'
   }
@@ -308,18 +231,6 @@ output logicAppPrincipalId string = logicAppStandard.outputs.logicAppPrincipalId
 
 @description('App Service Plan name')
 output appServicePlanName string = logicAppStandard.outputs.appServicePlanName
-
-@description('Data Factory name')
-output dataFactoryName string = dataFactory.outputs.dataFactoryName
-
-@description('Data Factory managed identity principal ID')
-output dataFactoryPrincipalId string = dataFactory.outputs.dataFactoryPrincipalId
-
-@description('SQL server FQDN')
-output sqlServerFqdn string = sql.outputs.sqlServerFqdn
-
-@description('SQL database name')
-output sqlDatabaseName string = sql.outputs.sqlDatabaseName
 
 @description('Foundry endpoint')
 output foundryEndpoint string = foundry.outputs.foundryEndpoint
