@@ -1,0 +1,40 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "location": {
+      "value": "eastus2"
+    },
+    "environment": {
+      "value": "prod"
+    },
+    "storageAccountName": {
+      "value": "stdtenoticeappeus2mx02"
+    },
+    "keyVaultName": {
+      "value": "kv-dtenotice-eus2-mx02"
+    },
+    "logicAppName": {
+      "value": "logic-dte-noticeapp-eus2-mx02"
+    },
+    "appServicePlanName": {
+      "value": "asp-dte-noticeapp-eus2-mx02"
+    },
+    "vnetName": {
+      "value": "vnet-dte-noticeapp-eus2-mx02"
+    },
+    "foundryAccountName": {
+      "value": "cog-dte-noticeapp-eus2-mx02"
+    },
+    "tags": {
+      "value": {
+        "Project": "Critical Notice Ingestion",
+        "Environment": "prod",
+        "ManagedBy": "Bicep",
+        "CostCenter": "DTE",
+        "Owner": "Jason Farrell",
+        "SecurityControl": "Ignore"
+      }
+    }
+  }
+}

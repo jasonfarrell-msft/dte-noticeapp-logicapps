@@ -91,7 +91,12 @@ function Invoke-AzCopyIfLocalExists {
 
     $localPath = Convert-PrefixToLocalPath -Prefix $Prefix
     if (Test-Path $localPath) {
-        Invoke-AzCopy -Source $localPath -Target "$targetBase/$Prefix"
+        # Target the parent prefix so AzCopy lands the folder at the correct depth.
+        # e.g. Prefix="indices/daily/2026-04-18" → target container/indices/daily/
+        #      Prefix="notices"                  → target container root
+        $parentPrefix = $Prefix -replace '/[^/]+$', ''
+        $targetDir = if ($parentPrefix) { "$targetBase/$parentPrefix" } else { $targetBase }
+        Invoke-AzCopy -Source $localPath -Target $targetDir
     } else {
         Write-Output "Skipping missing seed path: $Prefix"
     }
@@ -121,7 +126,8 @@ foreach ($prefix in $requiredPrefixes) {
     if (-not (Test-Path $requiredPath)) {
         throw "Seed data missing required path: $requiredPath"
     }
-    Invoke-AzCopy -Source $requiredPath -Target "$targetBase/$prefix"
+    # Target container root so the folder name itself becomes the blob prefix
+    Invoke-AzCopy -Source $requiredPath -Target $targetBase
 }
 
 Invoke-AzCopyIfLocalExists -Prefix 'tracking'

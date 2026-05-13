@@ -170,11 +170,8 @@ resource logicAppStorageBlobRole 'Microsoft.Authorization/roleAssignments@2022-0
 
 // Key Vault Secrets User for Logic App Standard
 // Role ID: 4633458b-17de-408a-b874-0445c86b69e6
-// Pinned GUID for prod only; deterministic guid() for non-prod
 resource logicAppKeyVaultRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: environment == 'prod' 
-    ? '8ab80e73-28e2-5c85-82f3-a79179c91441' 
-    : guid(resourceGroup().id, logicAppName, 'KeyVaultSecretsUser')
+  name: guid(resourceGroup().id, logicAppName, 'KeyVaultSecretsUser')
   scope: resourceGroup()
   properties: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '4633458b-17de-408a-b874-0445c86b69e6')
@@ -185,11 +182,8 @@ resource logicAppKeyVaultRole 'Microsoft.Authorization/roleAssignments@2022-04-0
 
 // Cognitive Services User role for Logic App Standard (to call Foundry)
 // Role ID: a97b65f3-24c7-4388-baec-2e87135dc908
-// Pinned GUID for prod only; deterministic guid() for non-prod
 resource logicAppFoundryRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: environment == 'prod' 
-    ? 'fdb87f43-7023-5260-92b4-53db918b6848' 
-    : guid(resourceGroup().id, logicAppName, foundryAccountName, 'CognitiveServicesUser')
+  name: guid(resourceGroup().id, logicAppName, foundryAccountName, 'CognitiveServicesUser')
   scope: resourceGroup()
   properties: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'a97b65f3-24c7-4388-baec-2e87135dc908')

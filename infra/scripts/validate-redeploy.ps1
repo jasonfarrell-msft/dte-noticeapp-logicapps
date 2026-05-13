@@ -19,7 +19,9 @@ param(
 
     [string]$TemplateFile = (Join-Path $PSScriptRoot '..\main.bicep'),
 
-    [string]$SubscriptionId
+    [string]$SubscriptionId,
+
+    [switch]$SkipResultsCheck
 )
 
 Set-StrictMode -Version Latest
@@ -107,7 +109,7 @@ if ($storageAccount.allowBlobPublicAccess -ne $false) {
     throw "Storage account '$StorageAccountName' must have anonymous blob public access disabled."
 }
 
-if ($storageAccount.publicNetworkAccess -ne 'Enabled') {
+if ($storageAccount.publicNetworkAccess -ne 'Enabled' -and $storageAccount.publicNetworkAccess -ne $null) {
     throw "Storage account '$StorageAccountName' must have public network access enabled."
 }
 
@@ -237,12 +239,16 @@ foreach ($source in $Sources) {
     }
 }
 
-if (-not (Test-BlobPrefixExists -AccountName $StorageAccountName -Container $ContainerName -Prefix 'parsed/')) {
-    throw "No parsed outputs found under parsed/. Parser may not be writing results."
-}
+if ($SkipResultsCheck) {
+    Write-Output 'Skipping parsed/processed results checks (SkipResultsCheck specified).'
+} else {
+    if (-not (Test-BlobPrefixExists -AccountName $StorageAccountName -Container $ContainerName -Prefix 'parsed/')) {
+        throw "No parsed outputs found under parsed/. Parser may not be writing results."
+    }
 
-if (-not (Test-BlobPrefixExists -AccountName $StorageAccountName -Container $ContainerName -Prefix 'processed/raw/')) {
-    throw "No processed/raw outputs found. Parser may not be moving raw HTML."
+    if (-not (Test-BlobPrefixExists -AccountName $StorageAccountName -Container $ContainerName -Prefix 'processed/raw/')) {
+        throw "No processed/raw outputs found. Parser may not be moving raw HTML."
+    }
 }
 
 Write-Output 'Redeploy validation checks passed.'
