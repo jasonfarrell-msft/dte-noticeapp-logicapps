@@ -1,100 +1,61 @@
 {
   "definition": {
     "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
-    "contentVersion": "2.0.0",
-    "parameters": {},
+    "contentVersion": "4.0.0",
+    "parameters": {
+      "storageAccountName": {
+        "type": "String"
+      },
+      "foundryEndpoint": {
+        "type": "String"
+      },
+      "foundryDeploymentName": {
+        "type": "String",
+        "defaultValue": "gpt-5.2"
+      },
+      "storageApiVersion": {
+        "type": "String",
+        "defaultValue": "2020-10-02"
+      },
+      "foundryApiVersion": {
+        "type": "String",
+        "defaultValue": "2024-10-21"
+      },
+      "subscriptionId": {
+        "type": "String"
+      },
+      "resourceGroupName": {
+        "type": "String"
+      },
+      "dataFactoryName": {
+        "type": "String"
+      },
+      "adfApiVersion": {
+        "type": "String",
+        "defaultValue": "2018-06-01"
+      }
+    },
     "triggers": {
-      "Recurrence_Check_For_Raw_HTML": {
-        "type": "Recurrence",
-        "recurrence": {
-          "frequency": "Minute",
-          "interval": 5
+      "HTTP_Request": {
+        "type": "Request",
+        "kind": "Http",
+        "inputs": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "rawBlobPath": {
+                "type": "string",
+                "description": "Full blob path within container: raw/{source}/{date}/{pipeline}/{noticeId}.html"
+              }
+            },
+            "required": [
+              "rawBlobPath"
+            ]
+          }
         }
       }
     },
     "actions": {
-      "Initialize_StorageAccountName": {
-        "type": "InitializeVariable",
-        "inputs": {
-          "variables": [
-            {
-              "name": "storageAccountName",
-              "type": "string",
-              "value": "@appsetting('StorageAccountName')"
-            }
-          ]
-        },
-        "runAfter": {}
-      },
-      "Initialize_FoundryEndpoint": {
-        "type": "InitializeVariable",
-        "inputs": {
-          "variables": [
-            {
-              "name": "foundryEndpoint",
-              "type": "string",
-              "value": "@appsetting('FoundryEndpoint')"
-            }
-          ]
-        },
-        "runAfter": {
-          "Initialize_StorageAccountName": ["Succeeded"]
-        }
-      },
-      "Initialize_FoundryDeploymentName": {
-        "type": "InitializeVariable",
-        "inputs": {
-          "variables": [
-            {
-              "name": "foundryDeploymentName",
-              "type": "string",
-              "value": "@appsetting('FoundryDeploymentName')"
-            }
-          ]
-        },
-        "runAfter": {
-          "Initialize_FoundryEndpoint": ["Succeeded"]
-        }
-      },
-      "Initialize_FoundryApiKey": {
-        "type": "InitializeVariable",
-        "inputs": {
-          "variables": [
-            {
-              "name": "foundryApiKey",
-              "type": "string",
-              "value": "@appsetting('FoundryApiKey')"
-            }
-          ]
-        },
-        "runAfter": {
-          "Initialize_FoundryDeploymentName": ["Succeeded"]
-        }
-      },
-      "List_Raw_HTML_Blobs": {
-        "type": "Http",
-        "inputs": {
-          "method": "GET",
-          "uri": "https://@{variables('storageAccountName')}.blob.core.windows.net/critical-notices?restype=container&comp=list&prefix=raw/&maxresults=50",
-          "authentication": {
-            "type": "ManagedServiceIdentity",
-            "audience": "https://storage.azure.com/"
-          },
-          "headers": {
-            "x-ms-version": "2020-10-02"
-          }
-        },
-        "runAfter": {
-          "Initialize_FoundryApiKey": ["Succeeded"]
-        }
-      },
-      "Parse_Blob_List_XML": {
-        "type": "Compose",
-        "inputs": "@xpath(xml(body('List_Raw_HTML_Blobs')), '//Blob/Name/text()')",
-        "runAfter": {
-          "List_Raw_HTML_Blobs": ["Succeeded"]
-        }
-      },
       "Initialize_FoundrySystemPrompt": {
         "type": "InitializeVariable",
         "inputs": {
@@ -106,9 +67,7 @@
             }
           ]
         },
-        "runAfter": {
-          "Parse_Blob_List_XML": ["Succeeded"]
-        }
+        "runAfter": {}
       },
       "Initialize_ExtractionPrompt": {
         "type": "InitializeVariable",
@@ -122,87 +81,122 @@
           ]
         },
         "runAfter": {
-          "Initialize_FoundrySystemPrompt": ["Succeeded"]
+          "Initialize_FoundrySystemPrompt": [
+            "Succeeded"
+          ]
         }
       },
-      "For_Each_Raw_Blob": {
-        "type": "Foreach",
-        "foreach": "@outputs('Parse_Blob_List_XML')",
+      "Parse_Blob_Path": {
+        "type": "Compose",
+        "inputs": {
+          "blobPath": "@{triggerBody()?['rawBlobPath']}",
+          "blobName": "@{last(split(triggerBody()?['rawBlobPath'], '/'))}",
+          "pathParts": "@split(triggerBody()?['rawBlobPath'], '/')"
+        },
+        "runAfter": {
+          "Initialize_ExtractionPrompt": [
+            "Succeeded"
+          ]
+        }
+      },
+      "Extract_Path_Metadata": {
+        "type": "Compose",
+        "inputs": {
+          "source": "@{outputs('Parse_Blob_Path')?['pathParts'][1]}",
+          "dateFolder": "@{outputs('Parse_Blob_Path')?['pathParts'][2]}",
+          "pipeline": "@{outputs('Parse_Blob_Path')?['pathParts'][3]}",
+          "fileName": "@{last(outputs('Parse_Blob_Path')?['pathParts'])}",
+          "noticeId": "@{replace(last(outputs('Parse_Blob_Path')?['pathParts']), '.html', '')}"
+        },
+        "runAfter": {
+          "Parse_Blob_Path": [
+            "Succeeded"
+          ]
+        }
+      },
+      "Check_Already_Parsed": {
+        "type": "Http",
+        "inputs": {
+          "method": "HEAD",
+          "uri": "https://@{parameters('storageAccountName')}.blob.core.windows.net/critical-notices/parsed/@{outputs('Extract_Path_Metadata')?['source']}/@{outputs('Extract_Path_Metadata')?['pipeline']}/@{outputs('Extract_Path_Metadata')?['noticeId']}.json",
+          "authentication": {
+            "type": "ManagedServiceIdentity",
+            "audience": "https://storage.azure.com/"
+          },
+          "headers": {
+            "x-ms-version": "@{parameters('storageApiVersion')}"
+          }
+        },
+        "retryPolicy": {
+          "type": "exponential",
+          "count": 3,
+          "interval": "PT5S",
+          "minimumInterval": "PT5S",
+          "maximumInterval": "PT30S"
+        },
+        "runAfter": {
+          "Extract_Path_Metadata": [
+            "Succeeded"
+          ]
+        }
+      },
+      "Process_If_Not_Parsed": {
+        "type": "If",
+        "expression": {
+          "equals": [
+            "@coalesce(outputs('Check_Already_Parsed')?['statusCode'], 0)",
+            404
+          ]
+        },
         "actions": {
-          "Parse_Blob_Path": {
-            "type": "Compose",
-            "inputs": {
-              "blobPath": "@{items('For_Each_Raw_Blob')}",
-              "blobName": "@{last(split(items('For_Each_Raw_Blob'), '/'))}",
-              "pathParts": "@split(items('For_Each_Raw_Blob'), '/')"
-            },
-            "runAfter": {}
-          },
-          "Extract_Path_Metadata": {
-            "type": "Compose",
-            "inputs": {
-              "source": "@{outputs('Parse_Blob_Path')?['pathParts'][1]}",
-              "dateFolder": "@{outputs('Parse_Blob_Path')?['pathParts'][2]}",
-              "pipeline": "@{outputs('Parse_Blob_Path')?['pathParts'][3]}",
-              "fileName": "@{last(outputs('Parse_Blob_Path')?['pathParts'])}",
-              "noticeId": "@{replace(last(outputs('Parse_Blob_Path')?['pathParts']), '.html', '')}"
-            },
-            "runAfter": {
-              "Parse_Blob_Path": ["Succeeded"]
-            }
-          },
-          "Check_Already_Parsed": {
-            "type": "Http",
-            "inputs": {
-              "method": "HEAD",
-              "uri": "https://@{variables('storageAccountName')}.blob.core.windows.net/critical-notices/parsed/@{outputs('Extract_Path_Metadata')?['source']}/@{outputs('Extract_Path_Metadata')?['pipeline']}/@{outputs('Extract_Path_Metadata')?['noticeId']}.json",
-              "authentication": {
-                "type": "ManagedServiceIdentity",
-                "audience": "https://storage.azure.com/"
-              },
-              "headers": {
-                "x-ms-version": "2020-10-02"
-              }
-            },
-            "runAfter": {
-              "Extract_Path_Metadata": ["Succeeded"]
-            },
-            "runtimeConfiguration": {
-              "staticResult": {
-                "name": "HTTP_HEAD_Check",
-                "staticResultOptions": "Disabled"
-              }
-            }
-          },
-          "Process_If_Not_Parsed": {
-            "type": "If",
-            "expression": {
-              "equals": ["@outputs('Check_Already_Parsed')['statusCode']", 404]
-            },
+          "Try_Parse": {
+            "type": "Scope",
             "actions": {
               "Get_HTML_Blob_Content": {
                 "type": "Http",
                 "inputs": {
                   "method": "GET",
-                  "uri": "https://@{variables('storageAccountName')}.blob.core.windows.net/critical-notices/@{outputs('Parse_Blob_Path')?['blobPath']}",
+                  "uri": "https://@{parameters('storageAccountName')}.blob.core.windows.net/critical-notices/@{outputs('Parse_Blob_Path')?['blobPath']}",
                   "authentication": {
                     "type": "ManagedServiceIdentity",
                     "audience": "https://storage.azure.com/"
                   },
                   "headers": {
-                    "x-ms-version": "2020-10-02"
+                    "x-ms-version": "@{parameters('storageApiVersion')}"
                   }
                 },
+                "retryPolicy": {
+                  "type": "exponential",
+                  "count": 3,
+                  "interval": "PT5S",
+                  "minimumInterval": "PT5S",
+                  "maximumInterval": "PT30S"
+                },
                 "runAfter": {}
+              },
+              "Scrub_HTML": {
+                "type": "JavaScriptCode",
+                "inputs": {
+                  "code": "var html = workflowContext.actions['Get_HTML_Blob_Content'].outputs.body;\nif (typeof html !== 'string') { html = String(html || ''); }\nvar orig = html.length;\nvar s = html\n  .replace(/<script[\\s\\S]*?<\\/script>/gi, '')\n  .replace(/<style[\\s\\S]*?<\\/style>/gi, '')\n  .replace(/<head[\\s\\S]*?<\\/head>/i, '')\n  .replace(/<noscript[\\s\\S]*?<\\/noscript>/gi, '')\n  .replace(/<!--[\\s\\S]*?-->/g, '')\n  .replace(/\\s+/g, ' ')\n  .trim();\nvar truncated = s.length > 50000;\nreturn { html: s.substring(0, 50000), originalLength: orig, scrubbedLength: s.length, truncated: truncated };",
+                  "explicitDependencies": {
+                    "actions": [
+                      "Get_HTML_Blob_Content"
+                    ]
+                  }
+                },
+                "runAfter": {
+                  "Get_HTML_Blob_Content": [
+                    "Succeeded"
+                  ]
+                }
               },
               "Call_Foundry_Extraction": {
                 "type": "Http",
                 "inputs": {
                   "method": "POST",
-                  "uri": "@{variables('foundryEndpoint')}/openai/deployments/@{variables('foundryDeploymentName')}/chat/completions?api-version=2024-02-01",
+                  "uri": "@{parameters('foundryEndpoint')}/openai/deployments/@{parameters('foundryDeploymentName')}/chat/completions?api-version=@{parameters('foundryApiVersion')}",
                   "headers": {
-                    "Content-Type": "application/json",
-                    "api-key": "@{variables('foundryApiKey')}"
+                    "Content-Type": "application/json"
                   },
                   "body": {
                     "messages": [
@@ -212,18 +206,31 @@
                       },
                       {
                         "role": "user",
-                        "content": "@{variables('extractionPrompt')}\n\nHTML Content:\n@{body('Get_HTML_Blob_Content')}"
+                        "content": "@{variables('extractionPrompt')}\n\nHTML Content:\n@{outputs('Scrub_HTML')?['html']}"
                       }
                     ],
                     "temperature": 0.1,
-                    "max_tokens": 2000,
+                    "max_completion_tokens": 1500,
                     "response_format": {
                       "type": "json_object"
                     }
+                  },
+                  "authentication": {
+                    "type": "ManagedServiceIdentity",
+                    "audience": "https://cognitiveservices.azure.com"
                   }
                 },
+                "retryPolicy": {
+                  "type": "exponential",
+                  "count": 6,
+                  "interval": "PT20S",
+                  "minimumInterval": "PT20S",
+                  "maximumInterval": "PT5M"
+                },
                 "runAfter": {
-                  "Get_HTML_Blob_Content": ["Succeeded"]
+                  "Scrub_HTML": [
+                    "Succeeded"
+                  ]
                 }
               },
               "Parse_Foundry_Response": {
@@ -233,138 +240,335 @@
                   "schema": {
                     "type": "object",
                     "properties": {
-                      "id": {"type": "string"},
-                      "object": {"type": "string"},
-                      "created": {"type": "integer"},
-                      "model": {"type": "string"},
+                      "id": {
+                        "type": "string"
+                      },
+                      "model": {
+                        "type": "string"
+                      },
                       "choices": {
                         "type": "array",
                         "items": {
                           "type": "object",
                           "properties": {
-                            "index": {"type": "integer"},
                             "message": {
                               "type": "object",
                               "properties": {
-                                "role": {"type": "string"},
-                                "content": {"type": "string"}
+                                "role": {
+                                  "type": "string"
+                                },
+                                "content": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                }
                               }
                             },
-                            "finish_reason": {"type": "string"}
+                            "finish_reason": {
+                              "type": "string"
+                            }
                           }
                         }
                       },
                       "usage": {
                         "type": "object",
                         "properties": {
-                          "prompt_tokens": {"type": "integer"},
-                          "completion_tokens": {"type": "integer"},
-                          "total_tokens": {"type": "integer"}
+                          "prompt_tokens": {
+                            "type": "integer"
+                          },
+                          "completion_tokens": {
+                            "type": "integer"
+                          },
+                          "total_tokens": {
+                            "type": "integer"
+                          }
                         }
                       }
                     }
                   }
                 },
                 "runAfter": {
-                  "Call_Foundry_Extraction": ["Succeeded"]
+                  "Call_Foundry_Extraction": [
+                    "Succeeded"
+                  ]
                 }
               },
-              "Extract_JSON_Content": {
-                "type": "Compose",
-                "inputs": "@json(body('Parse_Foundry_Response')?['choices'][0]?['message']?['content'])",
-                "runAfter": {
-                  "Parse_Foundry_Response": ["Succeeded"]
-                }
-              },
-              "Build_Final_Parsed_Document": {
-                "type": "Compose",
-                "inputs": {
-                  "metadata": {
-                    "source": "@{outputs('Extract_Path_Metadata')?['source']}",
-                    "pipeline": "@{outputs('Extract_Path_Metadata')?['pipeline']}",
-                    "noticeId": "@{outputs('Extract_Path_Metadata')?['noticeId']}",
-                    "rawBlobPath": "@{outputs('Parse_Blob_Path')?['blobPath']}",
-                    "parsedAt": "@{utcNow()}",
-                    "foundryModel": "@{variables('foundryDeploymentName')}",
-                    "tokensUsed": "@{body('Parse_Foundry_Response')?['usage']?['total_tokens']}"
+              "Validate_Foundry_Response": {
+                "type": "If",
+                "expression": {
+                  "and": [
+                    {
+                      "equals": [
+                        "@body('Parse_Foundry_Response')?['choices']?[0]?['finish_reason']",
+                        "stop"
+                      ]
+                    },
+                    {
+                      "not": {
+                        "equals": [
+                          "@coalesce(body('Parse_Foundry_Response')?['choices']?[0]?['message']?['content'], '')",
+                          ""
+                        ]
+                      }
+                    }
+                  ]
+                },
+                "actions": {
+                  "Extract_JSON_Content": {
+                    "type": "Compose",
+                    "inputs": "@json(body('Parse_Foundry_Response')?['choices'][0]?['message']?['content'])",
+                    "runAfter": {}
                   },
-                  "extracted": "@outputs('Extract_JSON_Content')"
+                  "Build_Final_Parsed_Document": {
+                    "type": "Compose",
+                    "inputs": {
+                      "metadata": {
+                        "source": "@{outputs('Extract_Path_Metadata')?['source']}",
+                        "pipeline": "@{outputs('Extract_Path_Metadata')?['pipeline']}",
+                        "noticeId": "@{outputs('Extract_Path_Metadata')?['noticeId']}",
+                        "rawBlobPath": "@{outputs('Parse_Blob_Path')?['blobPath']}",
+                        "parsedAt": "@{utcNow()}",
+                        "foundryModel": "@{parameters('foundryDeploymentName')}",
+                        "tokensUsed": "@body('Parse_Foundry_Response')?['usage']?['total_tokens']",
+                        "promptTokens": "@body('Parse_Foundry_Response')?['usage']?['prompt_tokens']",
+                        "completionTokens": "@body('Parse_Foundry_Response')?['usage']?['completion_tokens']",
+                        "originalHtmlLength": "@outputs('Scrub_HTML')?['originalLength']",
+                        "scrubbedHtmlLength": "@outputs('Scrub_HTML')?['scrubbedLength']"
+                      },
+                      "extracted": "@outputs('Extract_JSON_Content')"
+                    },
+                    "runAfter": {
+                      "Extract_JSON_Content": [
+                        "Succeeded"
+                      ]
+                    }
+                  },
+                  "Write_Parsed_JSON_Blob": {
+                    "type": "Http",
+                    "inputs": {
+                      "method": "PUT",
+                      "uri": "https://@{parameters('storageAccountName')}.blob.core.windows.net/critical-notices/parsed/@{outputs('Extract_Path_Metadata')?['source']}/@{outputs('Extract_Path_Metadata')?['pipeline']}/@{outputs('Extract_Path_Metadata')?['noticeId']}.json",
+                      "authentication": {
+                        "type": "ManagedServiceIdentity",
+                        "audience": "https://storage.azure.com/"
+                      },
+                      "headers": {
+                        "x-ms-version": "@{parameters('storageApiVersion')}",
+                        "x-ms-blob-type": "BlockBlob",
+                        "Content-Type": "application/json",
+                        "If-None-Match": "*"
+                      },
+                      "body": "@outputs('Build_Final_Parsed_Document')"
+                    },
+                    "runAfter": {
+                      "Build_Final_Parsed_Document": [
+                        "Succeeded"
+                      ]
+                    }
+                  },
+                  "Copy_Raw_To_Processed": {
+                    "type": "Http",
+                    "inputs": {
+                      "method": "PUT",
+                      "uri": "https://@{parameters('storageAccountName')}.blob.core.windows.net/critical-notices/processed/raw/@{outputs('Extract_Path_Metadata')?['source']}/@{outputs('Extract_Path_Metadata')?['dateFolder']}/@{outputs('Extract_Path_Metadata')?['pipeline']}/@{outputs('Extract_Path_Metadata')?['noticeId']}.html",
+                      "authentication": {
+                        "type": "ManagedServiceIdentity",
+                        "audience": "https://storage.azure.com/"
+                      },
+                      "headers": {
+                        "x-ms-version": "@{parameters('storageApiVersion')}",
+                        "x-ms-blob-type": "BlockBlob",
+                        "Content-Type": "text/html"
+                      },
+                      "body": "@{body('Get_HTML_Blob_Content')}"
+                    },
+                    "runAfter": {
+                      "Write_Parsed_JSON_Blob": [
+                        "Succeeded"
+                      ]
+                    }
+                  },
+                  "Trigger_ADF_LandParsedToSql": {
+                    "type": "Http",
+                    "description": "Enqueue ADF copy of just-written parsed JSON into dbo.notices. Failures are non-fatal: a missed enqueue can be recovered via a manual run with empty fileName (wildcard backfill).",
+                    "inputs": {
+                      "method": "POST",
+                      "uri": "https://management.azure.com/subscriptions/@{parameters('subscriptionId')}/resourceGroups/@{parameters('resourceGroupName')}/providers/Microsoft.DataFactory/factories/@{parameters('dataFactoryName')}/pipelines/LandParsedToSql/createRun",
+                      "queries": {
+                        "api-version": "@{parameters('adfApiVersion')}"
+                      },
+                      "authentication": {
+                        "type": "ManagedServiceIdentity",
+                        "audience": "https://management.azure.com/"
+                      },
+                      "headers": {
+                        "Content-Type": "application/json"
+                      },
+                      "body": {
+                        "sourceFolder": "parsed/@{outputs('Extract_Path_Metadata')?['source']}/@{outputs('Extract_Path_Metadata')?['pipeline']}",
+                        "fileName": "@{outputs('Extract_Path_Metadata')?['noticeId']}.json"
+                      }
+                    },
+                    "runAfter": {
+                      "Write_Parsed_JSON_Blob": [
+                        "Succeeded"
+                      ]
+                    }
+                  },
+                  "Delete_Original_Raw": {
+                    "type": "Http",
+                    "inputs": {
+                      "method": "DELETE",
+                      "uri": "https://@{parameters('storageAccountName')}.blob.core.windows.net/critical-notices/@{outputs('Parse_Blob_Path')?['blobPath']}",
+                      "authentication": {
+                        "type": "ManagedServiceIdentity",
+                        "audience": "https://storage.azure.com/"
+                      },
+                      "headers": {
+                        "x-ms-version": "@{parameters('storageApiVersion')}"
+                      }
+                    },
+                    "runAfter": {
+                      "Copy_Raw_To_Processed": [
+                        "Succeeded"
+                      ]
+                    }
+                  }
+                },
+                "else": {
+                  "actions": {
+                    "Log_Validation_Failure": {
+                      "type": "Http",
+                      "inputs": {
+                        "method": "PUT",
+                        "uri": "https://@{parameters('storageAccountName')}.blob.core.windows.net/critical-notices/failed-parsing/@{outputs('Extract_Path_Metadata')?['source']}/@{outputs('Extract_Path_Metadata')?['pipeline']}/@{outputs('Extract_Path_Metadata')?['noticeId']}.json",
+                        "authentication": {
+                          "type": "ManagedServiceIdentity",
+                          "audience": "https://storage.azure.com/"
+                        },
+                        "headers": {
+                          "x-ms-version": "@{parameters('storageApiVersion')}",
+                          "x-ms-blob-type": "BlockBlob",
+                          "Content-Type": "application/json"
+                        },
+                        "body": {
+                          "error": "validation-failed",
+                          "reason": "Foundry response missing content or finish_reason != 'stop'",
+                          "timestamp": "@{utcNow()}",
+                          "source": "@{outputs('Extract_Path_Metadata')?['source']}",
+                          "pipeline": "@{outputs('Extract_Path_Metadata')?['pipeline']}",
+                          "noticeId": "@{outputs('Extract_Path_Metadata')?['noticeId']}",
+                          "rawBlobPath": "@{outputs('Parse_Blob_Path')?['blobPath']}",
+                          "finishReason": "@{body('Parse_Foundry_Response')?['choices']?[0]?['finish_reason']}",
+                          "tokensUsed": "@body('Parse_Foundry_Response')?['usage']?['total_tokens']"
+                        }
+                      },
+                      "runAfter": {}
+                    }
+                  }
                 },
                 "runAfter": {
-                  "Extract_JSON_Content": ["Succeeded"]
-                }
-              },
-              "Write_Parsed_JSON_Blob": {
-                "type": "Http",
-                "inputs": {
-                  "method": "PUT",
-                  "uri": "https://@{variables('storageAccountName')}.blob.core.windows.net/critical-notices/parsed/@{outputs('Extract_Path_Metadata')?['source']}/@{outputs('Extract_Path_Metadata')?['pipeline']}/@{outputs('Extract_Path_Metadata')?['noticeId']}.json",
-                  "authentication": {
-                    "type": "ManagedServiceIdentity",
-                    "audience": "https://storage.azure.com/"
-                  },
-                  "headers": {
-                    "x-ms-version": "2020-10-02",
-                    "x-ms-blob-type": "BlockBlob",
-                    "Content-Type": "application/json"
-                  },
-                  "body": "@outputs('Build_Final_Parsed_Document')"
-                },
-                "runAfter": {
-                  "Build_Final_Parsed_Document": ["Succeeded"]
+                  "Parse_Foundry_Response": [
+                    "Succeeded"
+                  ]
                 }
               }
             },
-            "else": {
-              "actions": {}
-            },
-            "runAfter": {
-              "Check_Already_Parsed": ["Succeeded", "Failed"]
-            }
+            "runAfter": {}
           },
-          "Handle_Parsing_Errors": {
+          "Catch_Parse_Failure": {
             "type": "Scope",
             "actions": {
               "Log_Error_To_Failed_Folder": {
                 "type": "Http",
                 "inputs": {
                   "method": "PUT",
-                  "uri": "https://@{variables('storageAccountName')}.blob.core.windows.net/critical-notices/failed-parsing/@{outputs('Extract_Path_Metadata')?['source']}/@{outputs('Extract_Path_Metadata')?['pipeline']}/@{outputs('Extract_Path_Metadata')?['noticeId']}-@{utcNow('yyyyMMddHHmmss')}.json",
+                  "uri": "https://@{parameters('storageAccountName')}.blob.core.windows.net/critical-notices/failed-parsing/@{outputs('Extract_Path_Metadata')?['source']}/@{outputs('Extract_Path_Metadata')?['pipeline']}/@{outputs('Extract_Path_Metadata')?['noticeId']}.json",
                   "authentication": {
                     "type": "ManagedServiceIdentity",
                     "audience": "https://storage.azure.com/"
                   },
                   "headers": {
-                    "x-ms-version": "2020-10-02",
+                    "x-ms-version": "@{parameters('storageApiVersion')}",
                     "x-ms-blob-type": "BlockBlob",
                     "Content-Type": "application/json"
                   },
                   "body": {
-                    "error": "Parsing failed",
+                    "error": "scope-failure",
                     "timestamp": "@{utcNow()}",
                     "source": "@{outputs('Extract_Path_Metadata')?['source']}",
                     "pipeline": "@{outputs('Extract_Path_Metadata')?['pipeline']}",
                     "noticeId": "@{outputs('Extract_Path_Metadata')?['noticeId']}",
                     "rawBlobPath": "@{outputs('Parse_Blob_Path')?['blobPath']}",
-                    "errorDetails": "@{result('Process_If_Not_Parsed')}"
+                    "errorDetails": "@result('Try_Parse')"
                   }
                 },
                 "runAfter": {}
               }
             },
             "runAfter": {
-              "Process_If_Not_Parsed": ["Failed", "Skipped", "TimedOut"]
+              "Try_Parse": [
+                "Failed",
+                "TimedOut"
+              ]
             }
           }
         },
-        "runAfter": {
-          "Initialize_ExtractionPrompt": ["Succeeded"]
+        "else": {
+          "actions": {}
         },
-        "runtimeConfiguration": {
-          "concurrency": {
-            "repetitions": 3
-          }
+        "runAfter": {
+          "Check_Already_Parsed": [
+            "Succeeded",
+            "Failed"
+          ]
         }
+      },
+      "Response_Success": {
+        "type": "Response",
+        "inputs": {
+          "statusCode": 200,
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "status": "success",
+            "rawBlobPath": "@{triggerBody()?['rawBlobPath']}"
+          }
+        },
+        "runAfter": {
+          "Process_If_Not_Parsed": [
+            "Succeeded"
+          ]
+        },
+        "kind": "Http"
+      },
+      "Response_Failure": {
+        "type": "Response",
+        "inputs": {
+          "statusCode": 500,
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "status": "failed",
+            "rawBlobPath": "@{triggerBody()?['rawBlobPath']}"
+          }
+        },
+        "runAfter": {
+          "Parse_Blob_Path": [
+            "Failed"
+          ],
+          "Extract_Path_Metadata": [
+            "Failed"
+          ],
+          "Process_If_Not_Parsed": [
+            "Failed",
+            "TimedOut"
+          ]
+        },
+        "kind": "Http"
       }
     },
     "outputs": {}

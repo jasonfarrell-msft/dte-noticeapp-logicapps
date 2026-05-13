@@ -106,10 +106,51 @@ Maintenance pipeline placeholder for archiving old HTML files.
 ## Prerequisites
 
 - Azure CLI installed and authenticated
+- AzCopy installed and authenticated (`azcopy login`) for backfill
+- sqlcmd installed with AAD auth support (for SQL initialization)
 - Contributor access to the target subscription
 - Resource group `rg-dte-noticeapp-eus2-mx01` created
 
 ## Deployment
+
+### Recommended: Single-Command Setup
+
+Use the single setup script for a full environment build. It deploys infrastructure, builds and deploys the Logic App Standard package, uploads `config/sites.json`, initializes SQL when provided, and optionally seeds data.
+
+```powershell
+.\infra\scripts\setup-environment.ps1 `
+  -ResourceGroupName rg-dte-noticeapp-eus2-mx01 `
+  -Location eastus2 `
+  -StorageAccountName stdtenoticeappeus2mx01 `
+  -LogicAppName logic-dte-noticeapp-eus2-mx01 `
+  -DataFactoryName adf-dte-noticeapp-eus2-mx01 `
+  -SqlServerFqdn sql-dte-noticeapp-eus2-mx01.database.windows.net `
+  -DatabaseName noticesdb `
+  -SeedMode Backfill `
+  -SourceStorageAccountName <source-storage> `
+  -SourceResourceGroupName <source-rg> `
+  -Days 10 `
+  -RunValidation
+```
+
+Seed modes:
+- `None` (default) → config-only (no data seed/backfill).
+- `LocalSeed` → import a local seed package (`-SeedPath` optional; defaults to `infra\seed-package`).
+- `Backfill` → copy data directly from a source storage account (`-SourceStorageAccountName` required).
+
+`Backfill` does not create local JSON files. To see and reuse the container data locally, run `export-seed-package.ps1` first; it creates the gitignored `infra\seed-package` folder.
+
+Ensure the values you pass align with `main.parameters.json` (resource names and location).
+
+### Local Validation (No Azure Calls)
+
+Validate PowerShell script syntax locally before running deployments:
+
+```powershell
+.\infra\scripts\validate-local.ps1
+# Optional: validate only the single setup script
+.\infra\scripts\validate-local.ps1 -ScriptNames setup-environment.ps1
+```
 
 ### Option 1: Azure CLI
 
@@ -160,6 +201,74 @@ az deployment group what-if \
   --template-file main.bicep \
   --parameters main.parameters.json
 ```
+
+## Redeploy + Backfill (Scripted)
+
+The scripts under `infra\scripts` provide a repeatable redeploy sequence for Logic Apps Standard plus data backfill. Use these for advanced/manual steps when you don't want the single setup script.
+
+```powershell
+# 1) Deploy infrastructure (Bicep)
+.\infra\scripts\deploy-infra.ps1 `
+  -ResourceGroupName rg-dte-noticeapp-eus2-mx01 `
+  -Location eastus2
+
+# 2) Build and deploy workflow package (Logic Apps Standard)
+.\infra\scripts\build-deployment-package.ps1 -Force
+.\infra\scripts\deploy-workflows-standard.ps1 `
+  -ResourceGroupName rg-dte-noticeapp-eus2-mx01 `
+  -LogicAppName logic-dte-noticeapp-eus2-mx01
+
+# 3) Seed config (sites registry)
+.\infra\scripts\postdeploy-seed-config.ps1 `
+  -StorageAccountName stdtenoticeappeus2mx01
+
+# 4) Initialize SQL schema + grants
+.\infra\scripts\sql-init.ps1 `
+  -SqlServerFqdn sql-dte-noticeapp-eus2-mx01.database.windows.net `
+  -DatabaseName noticesdb `
+  -DataFactoryName adf-dte-noticeapp-eus2-mx01
+
+# 5) Backfill storage (safe re-run, no overwrites)
+.\infra\scripts\backfill-blobs.ps1 `
+  -SourceStorageAccountName <source-storage> `
+  -TargetStorageAccountName stdtenoticeappeus2mx01 `
+  -SourceResourceGroupName <source-rg> `
+  -TargetResourceGroupName rg-dte-noticeapp-eus2-mx01 `
+  -Days 10
+```
+
+Notes:
+- Scripts assume `az login` and `azcopy login` are completed.
+- Backfill uses `--overwrite=false` to avoid clobbering newer target blobs.
+- Adjust `-Days` to copy a larger date-folder window. `notices/` and `config/` are copied fully; `tracking/` and `discovery/` are copied when present.
+- Historical raw HTML may be under `processed/raw/{source}/{YYYY-MM-DD}/...` after parser runs, so the backfill copies both `raw/` and `processed/raw/` date folders.
+
+## Local Seed Package (Export/Import)
+
+Use this workflow when you need a portable seed bundle from an existing storage account (offline transfer, review, or staged import). It mirrors the backfill categories but stages data on disk before upload.
+
+The local JSON/data files are not committed to the repo and will not appear until this export command succeeds. The default output folder is `infra\seed-package`.
+
+```powershell
+# Export from source storage to local seed folder
+.\infra\scripts\export-seed-package.ps1 `
+  -StorageAccountName stdtenoticeappeus2mx01 `
+  -SeedPath .\infra\seed-package `
+  -Days 10
+
+# Import into a newly deployed storage account (no overwrite by default)
+.\infra\scripts\import-seed-package.ps1 `
+  -StorageAccountName <target-storage> `
+  -SeedPath .\infra\seed-package `
+  -Days 10
+```
+
+Notes:
+- Scripts assume `az login` and `azcopy login` are completed.
+- Export captures full `notices/` and `config/`, optional `tracking/` and `discovery/`, last N date folders for `raw/`, `processed/raw/`, and `indices/daily/`, plus recent `parsed/` blobs (filtered by last-modified time via AzCopy).
+- Import uses `--overwrite=false` unless `-Overwrite` is supplied.
+- Default seed path is `infra\seed-package` (gitignored) or supply `-SeedPath`.
+- Use `backfill-blobs.ps1` for direct storage-to-storage copy; use the seed package flow when you need local staging.
 
 ## Module Structure
 

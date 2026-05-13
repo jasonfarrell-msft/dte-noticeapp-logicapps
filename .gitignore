@@ -10,3 +10,6 @@
 _*.json
 
 
+
+# Built deployment zip
+infra/deployment-package.zip
