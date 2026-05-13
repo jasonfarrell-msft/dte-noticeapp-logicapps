@@ -1,0 +1,70 @@
+{
+  "version": "3.0.0",
+  "description": "Site registry for critical notice ingestion. Clients register a site by providing only the rootUrl, dropdownLabel, and parserModel. Business units are discovered automatically by the scanner Logic App at runtime.",
+  "sites": [
+    {
+      "id": "enbridge",
+      "name": "Enbridge Infopost",
+      "enabled": true,
+      "parserModel": "html-table-v1",
+      "discovery": {
+        "rootUrl": "https://infopost.enbridge.com/infopost/",
+        "dropdownLabel": "Select Business Unit"
+      },
+      "config": {
+        "listUrlPattern": "https://infopost.enbridge.com/infopost/noticesList.asp?pipe={code}&type=CRI",
+        "detailUrlPattern": "https://infopost.enbridge.com/infopost/NoticeListDetail.asp?strKey1={noticeId}&type=CRI&Embed=2&pipe={code}",
+        "noticeIdToken": "strKey1"
+      }
+    },
+    {
+      "id": "tceconnects",
+      "name": "TC Energy Connects",
+      "enabled": true,
+      "parserModel": "json-grid-v1",
+      "discovery": {
+        "rootUrl": "https://www.tceconnects.com/infopost/",
+        "dropdownLabel": "Pipeline"
+      },
+      "config": {
+        "listUrlPattern": "https://www.tceconnects.com/infopost/webmethods/SSRS_ListCriticalNotices.aspx?assetid={assetId}&page=1&rows=100",
+        "detailUrlPattern": "https://www.tceconnects.com/infopost/ReportViewer.aspx?%2fInfoPost%2fNoticesSubreport&pNoticeId={noticeId}&AssetNbr={assetId}&rs:Format=HTML4.0"
+      }
+    }
+  ],
+  "parserModels": {
+    "description": "Reference list of supported parserModel values. Each value implies both a notice-list parsing strategy AND a business-unit discovery strategy in the scanner workflow. Adding a new value requires (1) a new Switch case in scanner-multisite.json AND (2) a new branch in the inline JavaScript extractor.",
+    "supported": [
+      {
+        "id": "html-table-v1",
+        "description": "Notice list endpoint returns HTML; notices live in <tr> rows; noticeId extracted from a query-string token (e.g., strKey1).",
+        "discovery": "On the rootUrl, find the <ul> following the anchor whose text contains dropdownLabel. For each <li><a href> extract code from query-string token 'Pipe='. Display name is the anchor text (parens portion is a display alias and is stripped)."
+      },
+      {
+        "id": "json-grid-v1",
+        "description": "Notice list endpoint returns a JSON object with a `rows` array; each row has `id` and a `cell` array (cell[0]=noticeId, cell[1]=title, cell[2]=postedDate).",
+        "discovery": "On the rootUrl, find the <ul> following the anchor whose text contains dropdownLabel. For each <li><a onclick=\"changeAsset('NNN', 'Name (CODE)')\">, extract assetId from group 1 and code from the parens portion of the label."
+      }
+    ]
+  },
+  "canonical": {
+    "description": "Canonical schema for unified notice storage (Fabric-ready)",
+    "fields": [
+      {"name": "source", "type": "string", "description": "Site identifier from registry (site.id)"},
+      {"name": "pipeline", "type": "string", "description": "Business unit code (e.g., TE, ANR)"},
+      {"name": "pipelineName", "type": "string", "description": "Full pipeline company name"},
+      {"name": "noticeId", "type": "string", "description": "Unique notice identifier"},
+      {"name": "noticeType", "type": "string", "description": "Notice type (Maintenance, Capacity Constraint, etc.)"},
+      {"name": "status", "type": "string", "description": "Notice status (Initiate, Supersede, Cancel)"},
+      {"name": "isCritical", "type": "boolean", "description": "Critical notice flag"},
+      {"name": "title", "type": "string", "description": "Notice subject/title"},
+      {"name": "postedDate", "type": "datetime", "description": "When notice was posted"},
+      {"name": "effectiveDate", "type": "datetime", "description": "When notice takes effect"},
+      {"name": "endDate", "type": "datetime", "description": "When notice expires"},
+      {"name": "responseRequired", "type": "boolean", "description": "Whether response is required"},
+      {"name": "rawUrl", "type": "string", "description": "Source URL for the notice"},
+      {"name": "blobPath", "type": "string", "description": "Path to raw content in storage"},
+      {"name": "scrapedAt", "type": "datetime", "description": "When we captured this notice"}
+    ]
+  }
+}
