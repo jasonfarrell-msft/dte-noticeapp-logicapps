@@ -23,10 +23,6 @@
     "type": "String",
     "value": "@appsetting('ResourceGroupName')"
   },
-  "dataFactoryName": {
-    "type": "String",
-    "value": "@appsetting('DataFactoryName')"
-  },
   "backfillDays": {
     "type": "Int",
     "value": 10

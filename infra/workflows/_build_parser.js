@@ -45,9 +45,7 @@ const definition = {
     "storageApiVersion":      { "type": "String", "defaultValue": "2020-10-02" },
     "foundryApiVersion":      { "type": "String", "defaultValue": "2024-10-21" },
     "subscriptionId":         { "type": "String" },
-    "resourceGroupName":      { "type": "String" },
-    "dataFactoryName":        { "type": "String" },
-    "adfApiVersion":          { "type": "String", "defaultValue": "2018-06-01" }
+    "resourceGroupName":      { "type": "String" }
   },
   "triggers": {
     "HTTP_Request": {
@@ -251,22 +249,6 @@ const definition = {
                       "Content-Type":   "text/html"
                     },
                     "body": "@{body('Get_HTML_Blob_Content')}"
-                  },
-                  "runAfter": { "Write_Parsed_JSON_Blob": ["Succeeded"] }
-                },
-                "Trigger_ADF_LandParsedToSql": {
-                  "type": "Http",
-                  "description": "Enqueue ADF copy of just-written parsed JSON into dbo.notices. Failures are non-fatal: a missed enqueue can be recovered via a manual run with empty fileName (wildcard backfill).",
-                  "inputs": {
-                    "method": "POST",
-                    "uri": "https://management.azure.com/subscriptions/@{parameters('subscriptionId')}/resourceGroups/@{parameters('resourceGroupName')}/providers/Microsoft.DataFactory/factories/@{parameters('dataFactoryName')}/pipelines/LandParsedToSql/createRun",
-                    "queries": { "api-version": "@{parameters('adfApiVersion')}" },
-                    "authentication": { "type": "ManagedServiceIdentity", "audience": "https://management.azure.com/" },
-                    "headers": { "Content-Type": "application/json" },
-                    "body": {
-                      "sourceFolder": "parsed/@{outputs('Extract_Path_Metadata')?['source']}/@{outputs('Extract_Path_Metadata')?['pipeline']}",
-                      "fileName": "@{outputs('Extract_Path_Metadata')?['noticeId']}.json"
-                    }
                   },
                   "runAfter": { "Write_Parsed_JSON_Blob": ["Succeeded"] }
                 },

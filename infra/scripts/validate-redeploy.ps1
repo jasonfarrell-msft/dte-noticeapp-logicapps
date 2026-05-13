@@ -9,12 +9,6 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$StorageAccountName,
 
-    [string]$DataFactoryName,
-
-    [string]$SqlServerFqdn,
-
-    [string]$DatabaseName = 'noticesdb',
-
     [string]$ContainerName = 'critical-notices',
 
     [int]$DaysRequired = 10,
@@ -127,14 +121,6 @@ Invoke-Az -AzArgs @(
     '--resource-type', 'Microsoft.Web/sites',
     '--name', $LogicAppName
 ) | Out-Null
-
-if (-not [string]::IsNullOrWhiteSpace($DataFactoryName)) {
-    Invoke-Az -AzArgs @(
-        'datafactory', 'factory', 'show',
-        '--name', $DataFactoryName,
-        '--resource-group', $ResourceGroupName
-    ) | Out-Null
-}
 
 $missingTagResources = @(Invoke-Az -AzArgs @(
     'resource', 'list',
@@ -257,77 +243,6 @@ if (-not (Test-BlobPrefixExists -AccountName $StorageAccountName -Container $Con
 
 if (-not (Test-BlobPrefixExists -AccountName $StorageAccountName -Container $ContainerName -Prefix 'processed/raw/')) {
     throw "No processed/raw outputs found. Parser may not be moving raw HTML."
-}
-
-if (-not [string]::IsNullOrWhiteSpace($DataFactoryName)) {
-    Invoke-Az -AzArgs @(
-        'datafactory', 'pipeline', 'show',
-        '--factory-name', $DataFactoryName,
-        '--resource-group', $ResourceGroupName,
-        '--name', 'LandParsedToSql'
-    ) | Out-Null
-
-    Invoke-Az -AzArgs @(
-        'datafactory', 'pipeline', 'show',
-        '--factory-name', $DataFactoryName,
-        '--resource-group', $ResourceGroupName,
-        '--name', 'IngestToFabric'
-    ) | Out-Null
-
-    Invoke-Az -AzArgs @(
-        'datafactory', 'linked-service', 'show',
-        '--factory-name', $DataFactoryName,
-        '--resource-group', $ResourceGroupName,
-        '--name', 'AzureBlobStorage_ManagedIdentity'
-    ) | Out-Null
-
-    Invoke-Az -AzArgs @(
-        'datafactory', 'linked-service', 'show',
-        '--factory-name', $DataFactoryName,
-        '--resource-group', $ResourceGroupName,
-        '--name', 'AzureSqlDatabase_ManagedIdentity'
-    ) | Out-Null
-} else {
-    Write-Output 'Skipping Data Factory validation (DataFactoryName not supplied).'
-}
-
-if ($SqlServerFqdn) {
-    Assert-Command -Name 'sqlcmd'
-
-    function Invoke-SqlQuery {
-        param([string]$Query)
-        $result = sqlcmd -S $SqlServerFqdn -d $DatabaseName -G -b -h -1 -W -Q $Query
-        if ($LASTEXITCODE -ne 0) {
-            throw "sqlcmd failed for query: $Query"
-        }
-        return $result
-    }
-
-    $tableNames = Invoke-SqlQuery -Query "SET NOCOUNT ON; SELECT name FROM sys.tables WHERE name IN ('notices','notice_locations');"
-    $tableList = $tableNames -split "`n" | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
-    if (-not ($tableList -contains 'notices' -and $tableList -contains 'notice_locations')) {
-        throw 'SQL tables dbo.notices and dbo.notice_locations are required but missing.'
-    }
-
-    $expectedNoticesColumns = @('source','pipeline','noticeId','postedDate','rawBlobPath','parsedAt','foundryModel','tokensUsed','ingestedAt')
-    $noticesColumns = Invoke-SqlQuery -Query "SET NOCOUNT ON; SELECT name FROM sys.columns WHERE object_id = OBJECT_ID('dbo.notices');"
-    $noticesColumnList = $noticesColumns -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ }
-    $missingNoticesColumns = $expectedNoticesColumns | Where-Object { $_ -notin $noticesColumnList }
-    if ($missingNoticesColumns.Count -gt 0) {
-        throw "dbo.notices is missing expected columns: $($missingNoticesColumns -join ', ')."
-    }
-
-    $expectedLocationsColumns = @('source','pipeline','noticeId','location')
-    $locationsColumns = Invoke-SqlQuery -Query "SET NOCOUNT ON; SELECT name FROM sys.columns WHERE object_id = OBJECT_ID('dbo.notice_locations');"
-    $locationsColumnList = $locationsColumns -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ }
-    $missingLocationColumns = $expectedLocationsColumns | Where-Object { $_ -notin $locationsColumnList }
-    if ($missingLocationColumns.Count -gt 0) {
-        throw "dbo.notice_locations is missing expected columns: $($missingLocationColumns -join ', ')."
-    }
-
-    Invoke-SqlQuery -Query "SET NOCOUNT ON; SELECT TOP (1) source, pipeline, noticeId, postedDate, parsedAt FROM dbo.notices;" | Out-Null
-} else {
-    Write-Output 'Skipping SQL validation (SqlServerFqdn not supplied).'
 }
 
 Write-Output 'Redeploy validation checks passed.'

@@ -13,12 +13,6 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$LogicAppName,
 
-    [string]$DataFactoryName,
-
-    [string]$SqlServerFqdn,
-
-    [string]$DatabaseName = 'noticesdb',
-
     [ValidateSet('None', 'LocalSeed', 'Backfill')]
     [string]$SeedMode = 'None',
 
@@ -31,8 +25,6 @@ param(
     [int]$Days = 10,
 
     [switch]$RunValidation,
-
-    [switch]$SkipSqlInit,
 
     [switch]$AllowCallerIp,
 
@@ -65,7 +57,6 @@ $deployInfraScript = Join-Path $PSScriptRoot 'deploy-infra.ps1'
 $buildPackageScript = Join-Path $PSScriptRoot 'build-deployment-package.ps1'
 $deployWorkflowScript = Join-Path $PSScriptRoot 'deploy-workflows-standard.ps1'
 $seedConfigScript = Join-Path $PSScriptRoot 'postdeploy-seed-config.ps1'
-$sqlInitScript = Join-Path $PSScriptRoot 'sql-init.ps1'
 $backfillScript = Join-Path $PSScriptRoot 'backfill-blobs.ps1'
 $importSeedScript = Join-Path $PSScriptRoot 'import-seed-package.ps1'
 $validateRedeployScript = Join-Path $PSScriptRoot 'validate-redeploy.ps1'
@@ -75,9 +66,6 @@ Assert-PathExists -Path $deployInfraScript
 Assert-PathExists -Path $buildPackageScript
 Assert-PathExists -Path $deployWorkflowScript
 Assert-PathExists -Path $seedConfigScript
-if ($SqlServerFqdn -and -not $SkipSqlInit) {
-    Assert-PathExists -Path $sqlInitScript
-}
 Assert-PathExists -Path $validateRedeployScript
 Assert-PathExists -Path $ParametersFile
 
@@ -133,18 +121,6 @@ try {
 
     & $seedConfigScript -StorageAccountName $StorageAccountName @subscriptionArgs
 
-    if ($SqlServerFqdn -and -not $SkipSqlInit) {
-        if ([string]::IsNullOrWhiteSpace($DataFactoryName)) {
-            & $sqlInitScript -SqlServerFqdn $SqlServerFqdn -DatabaseName $DatabaseName
-        } else {
-            & $sqlInitScript -SqlServerFqdn $SqlServerFqdn -DatabaseName $DatabaseName -DataFactoryName $DataFactoryName
-        }
-    } elseif ($SkipSqlInit) {
-        Write-Output 'Skipping SQL initialization (SkipSqlInit specified).'
-    } else {
-        Write-Output 'Skipping SQL initialization (SqlServerFqdn not supplied).'
-    }
-
 switch ($SeedMode) {
     'LocalSeed' {
         Assert-PathExists -Path $importSeedScript
@@ -194,13 +170,6 @@ switch ($SeedMode) {
             LogicAppName = $LogicAppName
             StorageAccountName = $StorageAccountName
             DaysRequired = $Days
-        }
-        if (-not [string]::IsNullOrWhiteSpace($DataFactoryName)) {
-            $validateArgs.DataFactoryName = $DataFactoryName
-        }
-        if ($SqlServerFqdn) {
-            $validateArgs.SqlServerFqdn = $SqlServerFqdn
-            $validateArgs.DatabaseName = $DatabaseName
         }
         if ($SubscriptionId) {
             $validateArgs.SubscriptionId = $SubscriptionId

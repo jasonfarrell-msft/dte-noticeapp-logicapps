@@ -123,9 +123,6 @@ Use the single setup script for a full environment build. It deploys infrastruct
   -Location eastus2 `
   -StorageAccountName stdtenoticeappeus2mx01 `
   -LogicAppName logic-dte-noticeapp-eus2-mx01 `
-  -DataFactoryName adf-dte-noticeapp-eus2-mx01 `
-  -SqlServerFqdn sql-dte-noticeapp-eus2-mx01.database.windows.net `
-  -DatabaseName noticesdb `
   -SeedMode Backfill `
   -SourceStorageAccountName <source-storage> `
   -SourceResourceGroupName <source-rg> `
@@ -222,13 +219,7 @@ The scripts under `infra\scripts` provide a repeatable redeploy sequence for Log
 .\infra\scripts\postdeploy-seed-config.ps1 `
   -StorageAccountName stdtenoticeappeus2mx01
 
-# 4) Initialize SQL schema + grants
-.\infra\scripts\sql-init.ps1 `
-  -SqlServerFqdn sql-dte-noticeapp-eus2-mx01.database.windows.net `
-  -DatabaseName noticesdb `
-  -DataFactoryName adf-dte-noticeapp-eus2-mx01
-
-# 5) Backfill storage (safe re-run, no overwrites)
+# 4) Backfill storage (safe re-run, no overwrites)
 .\infra\scripts\backfill-blobs.ps1 `
   -SourceStorageAccountName <source-storage> `
   -TargetStorageAccountName stdtenoticeappeus2mx01 `
@@ -283,7 +274,7 @@ infra/
 │   ├── storage.bicep       # Storage account, containers, lifecycle
 │   ├── keyvault.bicep      # Key Vault with RBAC
 │   ├── logicapp.bicep      # Logic Apps (Scanner + Downloader)
-│   └── datafactory.bicep   # Data Factory with pipelines
+│   └── logicapp.bicep      # Logic Apps Standard (Scanner, Downloader, Parser)
 └── README.md               # This file
 ```
 
