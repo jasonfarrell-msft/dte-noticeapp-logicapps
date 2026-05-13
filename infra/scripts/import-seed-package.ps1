@@ -149,5 +149,8 @@ foreach ($dateFolder in $dateFolders) {
 }
 
 Invoke-AzCopyIfLocalExists -Prefix 'parsed'
+Invoke-AzCopyIfLocalExists -Prefix 'failed-parsing'
+Invoke-AzCopyIfLocalExists -Prefix 'metadata'
+Invoke-AzCopyIfLocalExists -Prefix 'raw-html'
 
 Write-Output "Seed package imported from $seedRoot"

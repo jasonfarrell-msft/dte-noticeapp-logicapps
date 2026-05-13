@@ -175,12 +175,9 @@ foreach ($dateFolder in $dateFolders) {
     }
 }
 
-if (Test-BlobPrefixExists -AccountName $StorageAccountName -Container $ContainerName -Prefix 'parsed/') {
-    $cutoffUtc = [DateTime]::UtcNow.AddDays(-$Days)
-    $cutoffIso = $cutoffUtc.ToString('yyyy-MM-ddTHH:mm:ssZ')
-    Invoke-AzCopy -Source "$sourceBase/parsed" -Target $seedRoot -ExtraArgs @("--include-after=$cutoffIso")
-} else {
-    Write-Output 'Skipping missing source prefix: parsed'
-}
+Invoke-AzCopyIfPrefixExists -Prefix 'parsed'
+Invoke-AzCopyIfPrefixExists -Prefix 'failed-parsing'
+Invoke-AzCopyIfPrefixExists -Prefix 'metadata'
+Invoke-AzCopyIfPrefixExists -Prefix 'raw-html'
 
 Write-Output "Seed package exported to $seedRoot"
